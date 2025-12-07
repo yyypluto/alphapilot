@@ -1,5 +1,5 @@
 import time
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 import requests
@@ -16,7 +16,7 @@ def _get_yahoo_session() -> requests.Session:
     return session
 
 
-def _get_yahoo_crumb(session: requests.Session) -> str | None:
+def _get_yahoo_crumb(session: requests.Session) -> Optional[str]:
     """Fetch Yahoo crumb lazily; it can fail on some networks."""
     try:
         resp = session.get(
@@ -31,8 +31,8 @@ def _get_yahoo_crumb(session: requests.Session) -> str | None:
 
 
 def _fetch_from_yahoo_chart_api(
-    ticker: str, period: str = "2y", session: requests.Session | None = None, crumb: str | None = None
-) -> pd.DataFrame | None:
+    ticker: str, period: str = "2y", session: Optional[requests.Session] = None, crumb: Optional[str] = None
+) -> Optional[pd.DataFrame]:
     session = session or _get_yahoo_session()
     period_map = {"1y": "1y", "2y": "2y", "5y": "5y"}
     range_val = period_map.get(period, "2y")
@@ -79,7 +79,7 @@ def _fetch_from_yahoo_chart_api(
     return None
 
 
-def _fetch_from_yfinance(ticker: str, period: str = "2y") -> pd.DataFrame | None:
+def _fetch_from_yfinance(ticker: str, period: str = "2y") -> Optional[pd.DataFrame]:
     """Fallback to yfinance which handles cookies/crumb internally."""
     try:
         df = yf.download(ticker, period=period, interval="1d", progress=False, auto_adjust=False)
@@ -152,7 +152,7 @@ def get_stock_data(tickers: List[str], period: str = "2y") -> Dict[str, pd.DataF
 
 
 @st.cache_data(ttl=3600)
-def get_fear_and_greed() -> Tuple[float | None, str]:
+def get_fear_and_greed() -> Tuple[Optional[float], str]:
     """
     Fetches CNN Fear & Greed Index with fallback.
     """
@@ -193,3 +193,92 @@ def get_fear_and_greed() -> Tuple[float | None, str]:
         pass
 
     return None, "数据获取失败"
+
+
+def analyze_smh_qqq_rs(stock_data: Dict[str, pd.DataFrame]) -> Tuple[pd.DataFrame | None, str]:
+    """
+    Analyze Relative Strength between SMH and QQQ.
+    Returns: DataFrame with RS data, and a signal string.
+    """
+    smh = stock_data.get("SMH")
+    qqq = stock_data.get("QQQ")
+
+    if smh is None or qqq is None or smh.empty or qqq.empty:
+        return None, "缺少 SMH 或 QQQ 数据"
+
+    # Align dates
+    df = pd.DataFrame(index=smh.index)
+    df["SMH"] = smh["Close"]
+    df["QQQ"] = qqq["Close"]
+    df = df.dropna()
+
+    if df.empty:
+        return None, "数据对齐后为空"
+
+    # Calculate Relative Strength
+    df["RS"] = df["SMH"] / df["QQQ"]
+    # Normalize to start from 1.0 for better visualization
+    df["RS_norm"] = df["RS"] / df["RS"].iloc[0]
+    
+    # Calculate RS MA
+    df["RS_MA20"] = df["RS"].rolling(window=20).mean()
+
+    # Simple Divergence / Trend Analysis
+    latest = df.iloc[-1]
+    prev_5 = df.iloc[-5:]
+    
+    signal = "⚪️ 相对强弱正常"
+    
+    # Scenario 1: Bearish Divergence (QQQ up, RS down) - simplified
+    # (Real divergence needs peak detection, here we use simple slope)
+    qqq_trend = df["QQQ"].iloc[-1] > df["QQQ"].iloc[-20:].mean() # QQQ above 20MA
+    rs_trend = df["RS"].iloc[-1] < df["RS"].iloc[-20:].mean() # RS below 20MA
+    
+    if qqq_trend and rs_trend:
+         signal = "⚠️ 警惕：QQQ 上涨但半导体相对走弱 (RS < MA20)"
+    elif df["RS"].iloc[-1] > df["RS"].iloc[-20:].max():
+         signal = "🟢 强势：半导体相对强度创新高"
+
+    return df, signal
+
+
+def analyze_smh_qqq_rs(stock_data: Dict[str, pd.DataFrame]):
+    """
+    Compute SMH/QQQ relative strength and detect hardware-vs-index divergence.
+    Returns (rs_df, signal_str) where rs_df has RS and normalized RS.
+    """
+    smh_df = stock_data.get("SMH")
+    qqq_df = stock_data.get("QQQ")
+    if smh_df is None or qqq_df is None:
+        return None, "数据不足"
+
+    # Align by date intersection to avoid NaN
+    common_index = smh_df.index.intersection(qqq_df.index)
+    if len(common_index) < 25:
+        return None, "数据不足"
+
+    df = pd.DataFrame(index=common_index)
+    df["SMH"] = smh_df.loc[common_index, "Close"]
+    df["QQQ"] = qqq_df.loc[common_index, "Close"]
+    df["RS"] = df["SMH"] / df["QQQ"]
+    df["RS_norm"] = df["RS"] / df["RS"].iloc[0]
+
+    # Divergence detection
+    window = 20
+    if len(df) <= window:
+        return df, "数据不足"
+
+    qqq_last = df["QQQ"].iloc[-1]
+    smh_last = df["SMH"].iloc[-1]
+    qqq_high_20 = df["QQQ"].iloc[-window - 1 : -1].max()
+    smh_high_20 = df["SMH"].iloc[-window - 1 : -1].max()
+
+    qqq_new_high = qqq_last > qqq_high_20
+    smh_new_high = smh_last > smh_high_20
+    rs_turning_down = df["RS"].diff().tail(3).mean() < 0
+
+    signal = "⚪️ 暂无背离"
+    if qqq_new_high and (not smh_new_high) and rs_turning_down:
+        signal = "🔴 预警：硬件动能衰竭（顶背离风险）"
+
+    return df, signal
