@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import requests
 import yfinance as yf
 from datetime import datetime, timedelta
@@ -28,11 +29,47 @@ st.markdown("""
     .stDataFrame {
         font-size: 1.1rem;
     }
+    /* Improve tooltip visibility */
+    .stTooltip {
+        background-color: #262730 !important;
+        color: white !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 2. Data Fetching & Processing
+# 2. Knowledge Base & Config
+# -----------------------------------------------------------------------------
+
+ETF_INFO = {
+    "VOO": {
+        "name": "Vanguard S&P 500 ETF",
+        "desc": "🇺🇸 **美国国运基石**。追踪标普 500 指数，包含美国最大的 500 家上市公司。它是你投资组合的压舱石。",
+        "relation": "基准指数。所有其他资产都应参考与 VOO 的相关性。",
+        "strategy": "核心仓位 (40-50%)"
+    },
+    "QQQ": {
+        "name": "Invesco QQQ Trust",
+        "desc": "💻 **科技成长引擎**。追踪纳斯达克 100 指数，重仓 Apple, Microsoft, Nvidia 等科技巨头。",
+        "relation": "高贝塔 (High Beta) 资产。通常在牛市中跑赢 VOO，熊市中跌幅更大。",
+        "strategy": "进攻仓位 (30-40%)"
+    },
+    "SMH": {
+        "name": "VanEck Semiconductor ETF",
+        "desc": "⚡️ **算力时代的石油**。追踪半导体指数，重仓 Nvidia, TSMC, AMD。AI 时代的核心受益者。",
+        "relation": "极高波动性。与 QQQ 高度相关，但爆发力更强。",
+        "strategy": "卫星仓位 (10-20%)"
+    },
+    "TLT": {
+        "name": "iShares 20+ Year Treasury Bond ETF",
+        "desc": "🛡️ **长期国债防守**。追踪美国 20 年期以上国债。通常在经济衰退或股市暴跌时上涨（避险属性）。",
+        "relation": "负相关资产。理想情况下与股票走势相反，用于对冲风险。",
+        "strategy": "对冲仓位 (0-10%)"
+    }
+}
+
+# -----------------------------------------------------------------------------
+# 3. Data Fetching & Processing
 # -----------------------------------------------------------------------------
 
 def _get_yahoo_session():
@@ -117,15 +154,31 @@ def _fetch_from_yfinance(ticker, period="2y"):
 
 def _compute_indicators(df):
     """Add derived indicators to a stock dataframe."""
+    # MA
     df['SMA_200'] = df['Close'].rolling(window=200).mean()
     df['SMA_20'] = df['Close'].rolling(window=20).mean()
     
+    # RSI
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     rs = gain / loss
     df['RSI'] = 100 - (100 / (1 + rs))
     
+    # MACD
+    exp12 = df['Close'].ewm(span=12, adjust=False).mean()
+    exp26 = df['Close'].ewm(span=26, adjust=False).mean()
+    df['MACD'] = exp12 - exp26
+    df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
+    df['MACD_Hist'] = df['MACD'] - df['MACD_Signal']
+
+    # Bollinger Bands (20, 2)
+    df['BB_Middle'] = df['Close'].rolling(window=20).mean()
+    df['BB_Std'] = df['Close'].rolling(window=20).std()
+    df['BB_Upper'] = df['BB_Middle'] + (2 * df['BB_Std'])
+    df['BB_Lower'] = df['BB_Middle'] - (2 * df['BB_Std'])
+    
+    # Distance
     df['Dist_MA200_Pct'] = ((df['Close'] - df['SMA_200']) / df['SMA_200'])
     return df
 
@@ -343,44 +396,116 @@ def main():
     # --- Module C: Detail Analysis (深度分析) ---
     st.subheader(f"🔍 模块 C: {selected_etf} 深度技术分析")
     
+    # ETF Info Expander
+    if selected_etf in ETF_INFO:
+        info = ETF_INFO[selected_etf]
+        with st.expander(f"📖 关于 {selected_etf} ({info['name']})", expanded=True):
+            st.markdown(f"{info['desc']}")
+            st.markdown(f"**📊 与核心资产关系**: {info['relation']}")
+            st.markdown(f"**💡 策略建议**: {info['strategy']}")
+
     etf_df = stock_data.get(selected_etf)
     
     if etf_df is not None:
-        # Create Plotly Figure
-        fig = go.Figure()
+        # Create Subplots: Main (Price) + RSI + MACD + Volume
+        fig = make_subplots(
+            rows=4, cols=1, 
+            shared_xaxes=True, 
+            vertical_spacing=0.03, 
+            row_heights=[0.5, 0.15, 0.15, 0.1],
+            subplot_titles=("Price Action & MA", "RSI (14)", "MACD", "Volume")
+        )
 
+        # 1. Main Chart: Candlestick + MA + BB
         # Candlestick
-        fig.add_trace(go.Scatter(x=etf_df.index, y=etf_df['Close'], mode='lines', name='Close Price', line=dict(color='white', width=2)))
+        fig.add_trace(go.Candlestick(
+            x=etf_df.index,
+            open=etf_df['Open'], high=etf_df['High'],
+            low=etf_df['Low'], close=etf_df['Close'],
+            name='Price'
+        ), row=1, col=1)
         
-        # MA Lines
-        fig.add_trace(go.Scatter(x=etf_df.index, y=etf_df['SMA_20'], mode='lines', name='MA20 (Short)', line=dict(color='yellow', width=1)))
-        fig.add_trace(go.Scatter(x=etf_df.index, y=etf_df['SMA_200'], mode='lines', name='MA200 (Long)', line=dict(color='#00b4d8', width=1.5)))
+        # MAs
+        fig.add_trace(go.Scatter(
+            x=etf_df.index, y=etf_df['SMA_20'], 
+            mode='lines', name='MA20 (Short)', 
+            line=dict(color='orange', width=1.5)
+        ), row=1, col=1)
+        
+        fig.add_trace(go.Scatter(
+            x=etf_df.index, y=etf_df['SMA_200'], 
+            mode='lines', name='MA200 (Long)', 
+            line=dict(color='#0000FF', width=2) # Deep Blue
+        ), row=1, col=1)
 
+        # Bollinger Bands
+        fig.add_trace(go.Scatter(
+            x=etf_df.index, y=etf_df['BB_Upper'],
+            mode='lines', name='BB Upper',
+            line=dict(color='gray', width=0.5, dash='dot'),
+            showlegend=False
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=etf_df.index, y=etf_df['BB_Lower'],
+            mode='lines', name='BB Lower',
+            line=dict(color='gray', width=0.5, dash='dot'),
+            fill='tonexty', fillcolor='rgba(128,128,128,0.1)',
+            showlegend=False
+        ), row=1, col=1)
+
+        # 2. RSI Chart
+        fig.add_trace(go.Scatter(
+            x=etf_df.index, y=etf_df['RSI'], 
+            mode='lines', name='RSI', 
+            line=dict(color='#bf5af2')
+        ), row=2, col=1)
+        # Thresholds
+        fig.add_hline(y=70, line_dash="dash", line_color="red", row=2, col=1)
+        fig.add_hline(y=30, line_dash="dash", line_color="green", row=2, col=1)
+        
+        # 3. MACD Chart
+        fig.add_trace(go.Bar(
+            x=etf_df.index, y=etf_df['MACD_Hist'],
+            name='MACD Hist',
+            marker_color=etf_df['MACD_Hist'].apply(lambda x: 'green' if x >= 0 else 'red')
+        ), row=3, col=1)
+        fig.add_trace(go.Scatter(
+            x=etf_df.index, y=etf_df['MACD'],
+            mode='lines', name='MACD',
+            line=dict(color='blue', width=1)
+        ), row=3, col=1)
+        fig.add_trace(go.Scatter(
+            x=etf_df.index, y=etf_df['MACD_Signal'],
+            mode='lines', name='Signal',
+            line=dict(color='orange', width=1)
+        ), row=3, col=1)
+
+        # 4. Volume Chart
+        colors = ['red' if row['Open'] - row['Close'] >= 0 else 'green' for index, row in etf_df.iterrows()]
+        fig.add_trace(go.Bar(
+            x=etf_df.index, y=etf_df['Volume'],
+            name='Volume',
+            marker_color=colors,
+            opacity=0.5
+        ), row=4, col=1)
+
+        # Layout Updates
         fig.update_layout(
-            title=f"{selected_etf} Price Trend vs Moving Averages",
-            xaxis_title="Date",
-            yaxis_title="Price",
-            height=500,
+            height=900,
             template="plotly_dark",
-            legend=dict(orientation="h", y=1.1)
+            xaxis_rangeslider_visible=False,
+            showlegend=True,
+            legend=dict(orientation="h", y=1.02),
+            margin=dict(l=20, r=20, t=30, b=20)
         )
+        
+        # Fix Rangebreaks (remove weekends)
+        fig.update_xaxes(
+            rangebreaks=[dict(bounds=["sat", "mon"])],
+            row=1, col=1
+        )
+
         st.plotly_chart(fig, use_container_width=True)
-        
-        # RSI Chart
-        fig_rsi = go.Figure()
-        fig_rsi.add_trace(go.Scatter(x=etf_df.index, y=etf_df['RSI'], mode='lines', name='RSI', line=dict(color='#bf5af2')))
-        
-        # Add RSI Thresholds
-        fig_rsi.add_hline(y=70, line_dash="dash", line_color="red", annotation_text="Overbought (70)")
-        fig_rsi.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Oversold (30)")
-        
-        fig_rsi.update_layout(
-            title="Relative Strength Index (RSI 14)",
-            height=300,
-            template="plotly_dark",
-            yaxis=dict(range=[0, 100])
-        )
-        st.plotly_chart(fig_rsi, use_container_width=True)
 
 if __name__ == "__main__":
     main()
