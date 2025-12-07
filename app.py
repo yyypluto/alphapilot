@@ -2,20 +2,14 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import requests
-import yfinance as yf
-from datetime import datetime, timedelta
-import time
+
+from config import ETF_INFO, INDICATOR_INFO, MACRO_TICKERS, PAGE_CONFIG, TARGET_ETFS, TIME_RANGES
+from utils import get_fear_and_greed, get_stock_data
 
 # -----------------------------------------------------------------------------
 # 1. Page Configuration
 # -----------------------------------------------------------------------------
-st.set_page_config(
-    page_title="AlphaPilot - 工程师的个人美股投资驾驶舱",
-    page_icon="🚀",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+st.set_page_config(**PAGE_CONFIG)
 
 # Custom CSS for styling
 st.markdown("""
@@ -38,249 +32,8 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 2. Knowledge Base & Config
+# 2. Main Application Logic
 # -----------------------------------------------------------------------------
-
-ETF_INFO = {
-    "VOO": {
-        "name": "Vanguard S&P 500 ETF",
-        "desc": "🇺🇸 **美国国运基石**。追踪标普 500 指数，包含美国最大的 500 家上市公司。它是你投资组合的压舱石。",
-        "relation": "基准指数。所有其他资产都应参考与 VOO 的相关性。",
-        "strategy": "核心仓位 (40-50%)"
-    },
-    "QQQ": {
-        "name": "Invesco QQQ Trust",
-        "desc": "💻 **科技成长引擎**。追踪纳斯达克 100 指数，重仓 Apple, Microsoft, Nvidia 等科技巨头。",
-        "relation": "高贝塔 (High Beta) 资产。通常在牛市中跑赢 VOO，熊市中跌幅更大。",
-        "strategy": "进攻仓位 (30-40%)"
-    },
-    "QLD": {
-        "name": "ProShares Ultra QQQ (2x)",
-        "desc": "🚀 **2倍做多纳指**。追求纳斯达克指数单日表现的 2 倍回报。",
-        "relation": "杠杆资产。波动极大，适合在明确的牛市趋势中使用。注意损耗！",
-        "strategy": "波段交易 (0-10%)。不建议长期“死拿”，除非在强劲牛市中。"
-    },
-    "TQQQ": {
-        "name": "ProShares UltraPro QQQ (3x)",
-        "desc": "🎰 **3倍做多纳指**。风险极高，收益也极高。俗称“纳指三倍做多”。",
-        "relation": "极高风险。巨大的波动率损耗（Volatility Decay）。市场震荡时会亏损。",
-        "strategy": "短线博弈 (<5%)。仅在极度恐慌反弹或主升浪时持有，严设止损。"
-    },
-    "SMH": {
-        "name": "VanEck Semiconductor ETF",
-        "desc": "⚡️ **算力时代的石油**。追踪半导体指数，重仓 Nvidia, TSMC, AMD。AI 时代的核心受益者。",
-        "relation": "极高波动性。与 QQQ 高度相关，但爆发力更强。",
-        "strategy": "卫星仓位 (10-20%)"
-    },
-    "TLT": {
-        "name": "iShares 20+ Year Treasury Bond ETF",
-        "desc": "🛡️ **长期国债防守**。追踪美国 20 年期以上国债。通常在经济衰退或股市暴跌时上涨（避险属性）。",
-        "relation": "负相关资产。理想情况下与股票走势相反，用于对冲风险。",
-        "strategy": "对冲仓位 (0-10%)"
-    }
-}
-
-INDICATOR_INFO = {
-    "MA20 (黄线)": "短期趋势线。价格在上方代表短期强势。若价格跌破 MA20，可能是短线回调信号。",
-    "MA200 (蓝线)": "牛熊分界线。价格在上方代表长期牛市。价格回踩 MA200 且不跌破，通常是绝佳买点（黄金坑）。",
-    "RSI (相对强弱)": "衡量超买超卖。\n• >70: 超买（可能回调，分批止盈）\n• <30: 超卖（可能反弹，分批买入）",
-    "MACD (趋势)": "由快线(蓝)、慢线(橙)和柱状图组成。\n• 金叉（蓝线上穿橙线）：买入信号\n• 死叉（蓝线下穿橙线）：卖出信号\n• 柱状图翻红：上涨动能增强",
-    "Bollinger Bands (布林带)": "由中轨(MA20)和上下两条标准差线组成。\n• 价格触及上轨：压力位，可能回调\n• 价格触及下轨：支撑位，可能反弹\n• 开口收窄：变盘前兆"
-}
-
-# -----------------------------------------------------------------------------
-# 3. Data Fetching & Processing
-# -----------------------------------------------------------------------------
-
-def _get_yahoo_session():
-    """Create a session with Yahoo-friendly headers."""
-    session = requests.Session()
-    session.headers.update({
-        # Simpler UA seems to avoid Yahoo rate-limit edge responses
-        "User-Agent": "Mozilla/5.0"
-    })
-    return session
-
-def _get_yahoo_crumb(session):
-    """
-    Fetch Yahoo crumb lazily. Some networks return 401 here, so only call it
-    when the chart API starts rate limiting.
-    """
-    try:
-        resp = session.get("https://query1.finance.yahoo.com/v1/test/getcrumb", timeout=10)
-        if resp.status_code == 200:
-            return resp.text.strip()
-    except Exception:
-        pass
-    return None
-
-def _fetch_from_yahoo_chart_api(ticker, period="2y", session=None, crumb=None):
-    """Fetch data using Yahoo Finance chart API directly."""
-    session = session or requests.Session()
-    period_map = {"1y": "1y", "2y": "2y", "5y": "5y"}
-    range_val = period_map.get(period, "2y")
-    
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
-    params = {
-        "range": range_val,
-        "interval": "1d",
-        "includePrePost": "false"
-    }
-    if crumb:
-        params["crumb"] = crumb
-    try:
-        response = session.get(url, params=params, timeout=15)
-        if response.status_code == 429 and crumb is None:
-            # Lazily fetch crumb and retry once if we hit rate limit.
-            crumb = _get_yahoo_crumb(session)
-            if crumb:
-                params["crumb"] = crumb
-                response = session.get(url, params=params, timeout=15)
-
-        if response.status_code == 200:
-            data = response.json()
-            result = data['chart']['result'][0]
-            
-            timestamps = result['timestamp']
-            quote = result['indicators']['quote'][0]
-            
-            df = pd.DataFrame({
-                'Open': quote['open'],
-                'High': quote['high'],
-                'Low': quote['low'],
-                'Close': quote['close'],
-                'Volume': quote['volume']
-            }, index=pd.to_datetime(timestamps, unit='s'))
-            
-            df.index.name = 'Date'
-            df = df.dropna(subset=['Close'])
-            return df
-    except Exception:
-        pass
-    
-    return None
-
-def _fetch_from_yfinance(ticker, period="2y"):
-    """Fallback to yfinance which handles cookies/crumb internally."""
-    try:
-        df = yf.download(ticker, period=period, interval="1d", progress=False, auto_adjust=False)
-        if df is None or df.empty:
-            return None
-        df.index.name = "Date"
-        df = df[['Open', 'High', 'Low', 'Close', 'Volume']].dropna(subset=['Close'])
-        return df
-    except Exception:
-        return None
-
-def _compute_indicators(df):
-    """Add derived indicators to a stock dataframe."""
-    # MA
-    df['SMA_200'] = df['Close'].rolling(window=200).mean()
-    df['SMA_20'] = df['Close'].rolling(window=20).mean()
-    
-    # RSI
-    delta = df['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    rs = gain / loss
-    df['RSI'] = 100 - (100 / (1 + rs))
-    
-    # MACD
-    exp12 = df['Close'].ewm(span=12, adjust=False).mean()
-    exp26 = df['Close'].ewm(span=26, adjust=False).mean()
-    df['MACD'] = exp12 - exp26
-    df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
-    df['MACD_Hist'] = df['MACD'] - df['MACD_Signal']
-
-    # Bollinger Bands (20, 2)
-    df['BB_Middle'] = df['Close'].rolling(window=20).mean()
-    df['BB_Std'] = df['Close'].rolling(window=20).std()
-    df['BB_Upper'] = df['BB_Middle'] + (2 * df['BB_Std'])
-    df['BB_Lower'] = df['BB_Middle'] - (2 * df['BB_Std'])
-    
-    # Distance
-    df['Dist_MA200_Pct'] = ((df['Close'] - df['SMA_200']) / df['SMA_200'])
-    return df
-
-@st.cache_data(ttl=3600)  # Cache data for 1 hour
-def get_stock_data(tickers, period="2y"):
-    """
-    Fetches historical data for a list of tickers.
-    Tries Yahoo Chart API with crumb, then falls back to yfinance.
-    """
-    data = {}
-    session = _get_yahoo_session()
-    crumb = None
-    
-    # Use Yahoo Chart API directly for each ticker; fallback to yfinance if needed
-    for ticker in tickers:
-        try:
-            df = _fetch_from_yahoo_chart_api(ticker, period, session=session, crumb=crumb)
-            if df is None and crumb is None:
-                crumb = _get_yahoo_crumb(session)
-                if crumb:
-                    df = _fetch_from_yahoo_chart_api(ticker, period, session=session, crumb=crumb)
-
-            if df is None or df.empty:
-                df = _fetch_from_yfinance(ticker, period)
-
-            if df is not None and not df.empty:
-                df = _compute_indicators(df)
-                data[ticker] = df
-            else:
-                st.warning(f"{ticker} 数据获取失败（API 被限流或网络问题），请稍后重试或刷新")
-        except Exception as e:
-            st.warning(f"获取 {ticker} 数据时出错: {e}")
-        
-        time.sleep(0.3)  # Small delay between requests to avoid rate limiting
-    
-    return data
-
-@st.cache_data(ttl=3600)
-def get_fear_and_greed():
-    """
-    Fetches CNN Fear & Greed Index. 
-    Uses multiple fallback mechanisms.
-    """
-    # Method 1: Try CNN API
-    urls = [
-        "https://production.dataviz.cnn.io/index/fearandgreed/graphdata",
-        "https://production.dataviz.cnn.io/index/fearandgreed/current",
-    ]
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json",
-        "Referer": "https://www.cnn.com/markets/fear-and-greed"
-    }
-    
-    for url in urls:
-        try:
-            r = requests.get(url, headers=headers, timeout=10)
-            if r.status_code == 200:
-                data = r.json()
-                if 'fear_and_greed' in data:
-                    fng_value = data['fear_and_greed']['score']
-                    fng_rating = data['fear_and_greed']['rating']
-                    return float(fng_value), fng_rating
-                elif 'score' in data:
-                    return float(data['score']), data.get('rating', 'Unknown')
-        except Exception:
-            continue
-    
-    # Method 2: Alternative Fear & Greed API
-    try:
-        alt_url = "https://api.alternative.me/fng/?limit=1"
-        r = requests.get(alt_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
-        if r.status_code == 200:
-            data = r.json()
-            if 'data' in data and len(data['data']) > 0:
-                fng_value = int(data['data'][0]['value'])
-                fng_rating = data['data'][0]['value_classification']
-                return fng_value, fng_rating
-    except Exception:
-        pass
-    
-    return None, "数据获取失败"
 
 def analyze_signal(row):
     """
@@ -311,11 +64,11 @@ def main():
     
     # --- Sidebar ---
     st.sidebar.header("⚙️ 驾驶舱设置")
-    target_etfs = ['VOO', 'QQQ', 'QLD', 'TQQQ', 'SMH', 'TLT']
-    macro_tickers = ['^VIX', '^TNX'] # VIX, 10Y Yield
+    target_etfs = TARGET_ETFS
+    macro_tickers = MACRO_TICKERS
     
     selected_etf = st.sidebar.selectbox("选择详情分析标的", target_etfs)
-    time_range = st.sidebar.radio("时间范围", ["1y", "2y", "5y"], index=1)
+    time_range = st.sidebar.radio("时间范围", TIME_RANGES, index=1)
     
     # Refresh Data Button
     if st.sidebar.button("刷新数据"):
@@ -406,8 +159,8 @@ def main():
         return color
 
     st.dataframe(
-        summary_df.style.applymap(highlight_rsi, subset=['RSI (14)']),
-        use_container_width=True,
+        summary_df.style.map(highlight_rsi, subset=['RSI (14)']),
+        width="stretch",
         hide_index=True
     )
 
