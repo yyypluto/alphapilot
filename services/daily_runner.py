@@ -135,8 +135,23 @@ def run_daily_job():
         soxx_qqq = soxx / qqq if soxx and qqq else None
         xlp_xly = xlp / xly if xlp and xly else None
         
-        # Fear & Greed
-        fng_score, _ = get_fear_and_greed()
+        # Fear & Greed - 直接请求 CNN API，避免缓存问题
+        fng_score = None
+        try:
+            fng_url = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata"
+            fng_headers = {
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+                "Accept": "application/json",
+            }
+            fng_resp = requests.get(fng_url, headers=fng_headers, timeout=10)
+            if fng_resp.status_code == 200:
+                fng_data = fng_resp.json()
+                fng_score = fng_data["fear_and_greed"]["score"]
+                print(f"✅ CNN Fear & Greed: {fng_score:.1f}")
+        except Exception as e:
+            print(f"⚠️ Failed to fetch Fear & Greed from CNN: {e}")
+            # Fallback to utils function
+            fng_score, _ = get_fear_and_greed()
         
         macro_record = {
             "date": today_str, # Macro uses run date usually, or latest data date
