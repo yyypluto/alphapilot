@@ -125,7 +125,7 @@ def get_stock_data(tickers: List[str], period: str = "2y") -> Dict[str, pd.DataF
     """
     data: Dict[str, pd.DataFrame] = {}
     session = _get_yahoo_session()
-    crumb: str | None = None
+    crumb: Optional[str] = None
 
     for ticker in tickers:
         try:
@@ -195,54 +195,7 @@ def get_fear_and_greed() -> Tuple[Optional[float], str]:
     return None, "数据获取失败"
 
 
-def analyze_smh_qqq_rs(stock_data: Dict[str, pd.DataFrame]) -> Tuple[pd.DataFrame | None, str]:
-    """
-    Analyze Relative Strength between SMH and QQQ.
-    Returns: DataFrame with RS data, and a signal string.
-    """
-    smh = stock_data.get("SMH")
-    qqq = stock_data.get("QQQ")
-
-    if smh is None or qqq is None or smh.empty or qqq.empty:
-        return None, "缺少 SMH 或 QQQ 数据"
-
-    # Align dates
-    df = pd.DataFrame(index=smh.index)
-    df["SMH"] = smh["Close"]
-    df["QQQ"] = qqq["Close"]
-    df = df.dropna()
-
-    if df.empty:
-        return None, "数据对齐后为空"
-
-    # Calculate Relative Strength
-    df["RS"] = df["SMH"] / df["QQQ"]
-    # Normalize to start from 1.0 for better visualization
-    df["RS_norm"] = df["RS"] / df["RS"].iloc[0]
-    
-    # Calculate RS MA
-    df["RS_MA20"] = df["RS"].rolling(window=20).mean()
-
-    # Simple Divergence / Trend Analysis
-    latest = df.iloc[-1]
-    prev_5 = df.iloc[-5:]
-    
-    signal = "⚪️ 相对强弱正常"
-    
-    # Scenario 1: Bearish Divergence (QQQ up, RS down) - simplified
-    # (Real divergence needs peak detection, here we use simple slope)
-    qqq_trend = df["QQQ"].iloc[-1] > df["QQQ"].iloc[-20:].mean() # QQQ above 20MA
-    rs_trend = df["RS"].iloc[-1] < df["RS"].iloc[-20:].mean() # RS below 20MA
-    
-    if qqq_trend and rs_trend:
-         signal = "⚠️ 警惕：QQQ 上涨但半导体相对走弱 (RS < MA20)"
-    elif df["RS"].iloc[-1] > df["RS"].iloc[-20:].max():
-         signal = "🟢 强势：半导体相对强度创新高"
-
-    return df, signal
-
-
-def analyze_smh_qqq_rs(stock_data: Dict[str, pd.DataFrame]):
+def analyze_smh_qqq_rs(stock_data: Dict[str, pd.DataFrame]) -> Tuple[Optional[pd.DataFrame], str]:
     """
     Compute SMH/QQQ relative strength and detect hardware-vs-index divergence.
     Returns (rs_df, signal_str) where rs_df has RS and normalized RS.

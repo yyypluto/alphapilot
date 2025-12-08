@@ -1,4 +1,5 @@
 import datetime as dt
+from typing import Optional
 
 import pandas as pd
 import plotly.express as px
@@ -106,7 +107,7 @@ def load_market_data(time_range: str):
     return stock_data, pivot_close, source
 
 
-def build_pivot_from_stock(stock_data: dict, tickers: list) -> pd.DataFrame | None:
+def build_pivot_from_stock(stock_data: dict, tickers: list) -> Optional[pd.DataFrame]:
     frames = {}
     for t in tickers:
         df = stock_data.get(t)
