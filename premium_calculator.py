@@ -521,8 +521,15 @@ def render_premium_dashboard():
         table_data.append(row)
     
     df = pd.DataFrame(table_data)
-    # 移除内部排序列
-    df_display = df.drop(columns=["溢价率值"])
+    
+    # 创建用于显示的副本，保留数值列供排序
+    # 重命名溢价率值列为"溢价率排序"，并放在实时溢价率后面
+    df_display = df.copy()
+    df_display = df_display.rename(columns={"溢价率值": "溢价率(数值)"})
+    
+    # 重新排列列顺序，把数值列放在显示列后面
+    column_order = ["ETF代码", "名称", "现价", "昨日净值", "估算净值", "溢价率(数值)", "实时溢价率", "建议操作"]
+    df_display = df_display[column_order]
     
     # 样式函数
     def highlight_premium(val):
@@ -550,7 +557,20 @@ def render_premium_dashboard():
         highlight_action, subset=["建议操作"]
     )
     
-    st.dataframe(styled_df, width="stretch", hide_index=True)
+    # 使用 column_config 来隐藏数值列但保留排序功能
+    st.dataframe(
+        styled_df, 
+        width="stretch", 
+        hide_index=True,
+        column_config={
+            "溢价率(数值)": st.column_config.NumberColumn(
+                "溢价率%",
+                help="用于排序的数值列",
+                format="%.2f%%"
+            ),
+            "实时溢价率": None,  # 隐藏字符串显示列
+        }
+    )
     
     # 图例说明
     with st.expander("📚 指标说明"):
