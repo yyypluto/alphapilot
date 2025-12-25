@@ -22,19 +22,34 @@ def init_supabase() -> Optional[Client]:
         
     return create_client(url, key)
 
-def fetch_market_daily(tickers: List[str], start: Optional[str] = None) -> pd.DataFrame:
-    """Fetch market metrics for given tickers."""
+def fetch_market_daily(tickers: List[str], start: Optional[str] = None, limit: int = 10000) -> pd.DataFrame:
+    """Fetch market metrics for given tickers with pagination support."""
     supabase = init_supabase()
     if not supabase:
         return pd.DataFrame()
     try:
-        query = supabase.table("market_daily_metrics").select("*").in_("ticker", tickers)
-        if start:
-            query = query.gte("date", start)
-        response = query.order("date", desc=False).execute()
-        if not response.data:
+        all_data = []
+        offset = 0
+        batch_size = 1000
+        
+        while True:
+            query = supabase.table("market_daily_metrics").select("*").in_("ticker", tickers)
+            if start:
+                query = query.gte("date", start)
+            query = query.order("date", desc=False).range(offset, offset + batch_size - 1)
+            response = query.execute()
+            
+            if not response.data:
+                break
+            all_data.extend(response.data)
+            
+            if len(response.data) < batch_size or len(all_data) >= limit:
+                break
+            offset += batch_size
+        
+        if not all_data:
             return pd.DataFrame()
-        return pd.DataFrame(response.data)
+        return pd.DataFrame(all_data)
     except Exception as e:
         print(f"⚠️ DB fetch market_daily_metrics failed, fallback to API: {e}")
         return pd.DataFrame()

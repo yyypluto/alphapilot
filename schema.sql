@@ -20,3 +20,10 @@ CREATE TABLE IF NOT EXISTS macro_indicators (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
+
+
+
+
+
+
+
