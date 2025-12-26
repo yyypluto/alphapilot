@@ -176,10 +176,37 @@ def run_daily_job():
         upsert_market_daily(market_metrics)
 
     # 5. Send Alerts
+    # 5. 生成并发送市场总结
+    summary_lines = [f"📅 日期: {today_str}"]
+    
+    # Macro Summary
+    if 'vix_close' in macro_record and macro_record['vix_close']:
+        summary_lines.append(f"📉 VIX: {macro_record['vix_close']:.2f}")
+    if 'fear_greed_index' in macro_record and macro_record['fear_greed_index']:
+        summary_lines.append(f"😰 恐慌指数: {macro_record['fear_greed_index']}")
+    if 'us10y_yield' in macro_record and macro_record['us10y_yield']:
+        summary_lines.append(f"📈 10Y美债: {macro_record['us10y_yield']:.2f}%")
+        
+    summary_lines.append("-" * 20)
+    
+    # Ticker Summary
+    for m in market_metrics:
+        if m['ticker'] in ['VOO', 'QQQ', 'SMH', 'TLT']:
+            rsi_str = f"RSI:{m['rsi_14']:.1f}" if m['rsi_14'] else "RSI:N/A"
+            # 只有异常值才加 emoji
+            icon = "🟢" if m['rsi_14'] and m['rsi_14'] < 30 else "🔴" if m['rsi_14'] and m['rsi_14'] > 70 else ""
+            summary_lines.append(f"{m['ticker']}: ${m['close']:.2f} | {rsi_str} {icon}")
+            
+    # Alerts
     if alerts:
-        send_feishu_alert("每日收盘监控", "\n".join(alerts))
-    else:
-        print("✅ No alerts triggered today.")
+        summary_lines.append("-" * 20)
+        summary_lines.append("⚠️ 监控报警:")
+        summary_lines.extend(alerts)
+        
+    # Send Summary
+    title = "AlphaPilot 市场监控播报"
+    send_feishu_alert(title, "\n".join(summary_lines))
+
     
     print("🎉 Daily runner finished successfully.")
 

@@ -2,8 +2,10 @@ name: AlphaPilot Daily Runner
 
 on:
   schedule:
-    # 每天 UTC 21:00 (北京时间 凌晨 5:00) 运行
-    - cron: '0 21 * * *'
+    # 每天北京时间 09:30 (UTC 01:30) - A股开盘
+    - cron: '30 1 * * *'
+    # 每天北京时间 23:00 (UTC 15:00) - 美股开盘
+    - cron: '0 15 * * *'
   workflow_dispatch: # 允许手动触发
 
 jobs:
