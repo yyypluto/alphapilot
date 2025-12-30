@@ -358,6 +358,63 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# Inject Custom CSS for Radio Pills Separation (better placed here)
+st.markdown(
+    """
+    <style>
+    /* ═══════════════════════════════════════════════════════════════════════
+       RADIO BUTTONS AS PILLS (Horizontal) - Re-injected
+    ═══════════════════════════════════════════════════════════════════════ */
+    
+    /* Container */
+    div[role="radiogroup"][aria-orientation="horizontal"] {
+        background: var(--bg-card);
+        padding: 8px;
+        border-radius: 100px; /* Pillow shape */
+        border: 1px solid var(--border-subtle);
+        box-shadow: var(--shadow-soft);
+        display: inline-flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 1.5rem;
+    }
+    
+    /* Individual Options */
+    div[role="radiogroup"][aria-orientation="horizontal"] label {
+        background: transparent !important;
+        border-radius: 40px !important;
+        padding: 0.5rem 1.5rem !important;
+        border: 1px solid transparent !important;
+        font-family: 'Lato', sans-serif !important;
+        font-weight: 600 !important;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        margin-right: 0px !important;
+    }
+    
+    div[role="radiogroup"][aria-orientation="horizontal"] label:hover {
+        background: var(--bg-paper) !important;
+        color: var(--accent-brand) !important;
+        transform: translateY(-1px);
+    }
+    
+    /* Active State Handling (Streamlit specific) 
+       Streamlit adds a background to the checked div. We override to make it look like a pill.
+    */
+    div[role="radiogroup"][aria-orientation="horizontal"] label[data-baseweb="radio"] > div:first-child {
+        display: none !important; /* Hide circle */
+    }
+    
+    /* Target the selected element text wrapper if possible. 
+       Streamlit's DOM for radios changes often. 
+       We will rely on visual check. 
+       Usually the selected label text gets bolded. */
+       
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 
 # -----------------------------------------------------------------------------
 # Helpers
@@ -727,74 +784,100 @@ def main():
         st.caption("点击展开查看各标的详细技术图表")
         
         # Display all ETFs in expandable sections
-        for etf_ticker in TARGET_ETFS:
-            etf_df = stock_data.get(etf_ticker)
-            if etf_df is None or not all(c in etf_df.columns for c in ["Open","High","Low","Close"]):
-                api_detail = get_stock_data([etf_ticker], period=time_range)
-                etf_df = api_detail.get(etf_ticker)
-            
-            # Get ETF info for display
-            etf_name = ETF_INFO.get(etf_ticker, {}).get('name', etf_ticker)
-            etf_strategy = ETF_INFO.get(etf_ticker, {}).get('strategy', '')
-            
-            # Create expander for each ETF - VOO and QQQ expanded by default
-            is_expanded = etf_ticker in ["VOO", "QQQ"]
-            with st.expander(f"📈 {etf_ticker} - {etf_name}", expanded=is_expanded):
-                if etf_df is not None and not etf_df.empty:
-                    # Show ETF info
-                    if etf_ticker in ETF_INFO:
-                        info = ETF_INFO[etf_ticker]
-                        st.markdown(f"**{info['desc']}**")
-                        st.caption(f"🎯 策略: {info['strategy']}")
-                        st.divider()
-                    
-                    # Create the chart
-                    fig = make_subplots(rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.03,
-                                        row_heights=[0.5,0.15,0.15,0.1],
-                                        subplot_titles=("Price & MAs","RSI","MACD","Volume"))
-                    fig.add_trace(go.Candlestick(x=etf_df.index, open=etf_df["Open"], high=etf_df["High"],
-                                                 low=etf_df["Low"], close=etf_df["Close"], name="Price"), row=1,col=1)
-                    fig.add_trace(go.Scatter(x=etf_df.index, y=etf_df["SMA_20"], name="MA20", line=dict(color="orange")), row=1,col=1)
-                    fig.add_trace(go.Scatter(x=etf_df.index, y=etf_df["SMA_200"], name="MA200", line=dict(color="blue")), row=1,col=1)
-                    if "BB_Upper" in etf_df and "BB_Lower" in etf_df:
-                        fig.add_trace(go.Scatter(x=etf_df.index, y=etf_df["BB_Upper"], showlegend=False, line=dict(color="gray", dash="dot", width=0)), row=1,col=1)
-                        fig.add_trace(go.Scatter(x=etf_df.index, y=etf_df["BB_Lower"], showlegend=False, line=dict(color="gray", dash="dot", width=0),
-                                                 fill="tonexty", fillcolor="rgba(128,128,128,0.1)"), row=1,col=1)
-                    fig.add_trace(go.Scatter(x=etf_df.index, y=etf_df["RSI"], name="RSI", line=dict(color="#bf5af2")), row=2,col=1)
-                    fig.add_hline(y=70, line_dash="dash", line_color="red", row=2,col=1)
-                    fig.add_hline(y=30, line_dash="dash", line_color="green", row=2,col=1)
-                    if "MACD_Hist" in etf_df.columns:
-                        fig.add_trace(go.Bar(x=etf_df.index, y=etf_df["MACD_Hist"], name="MACD Hist",
-                                             marker_color=["green" if v>=0 else "red" for v in etf_df["MACD_Hist"]]), row=3,col=1)
-                    if "MACD" in etf_df.columns:
-                        fig.add_trace(go.Scatter(x=etf_df.index, y=etf_df["MACD"], name="MACD", line=dict(color="blue")), row=3,col=1)
-                    if "MACD_Signal" in etf_df.columns:
-                        fig.add_trace(go.Scatter(x=etf_df.index, y=etf_df["MACD_Signal"], name="Signal", line=dict(color="orange")), row=3,col=1)
-                    if "Volume" in etf_df.columns:
-                        colors = ["red" if r.Open - r.Close >=0 else "green" for _, r in etf_df.iterrows()]
-                        fig.add_trace(go.Bar(x=etf_df.index, y=etf_df["Volume"], name="Volume", marker_color=colors), row=4,col=1)
-                    # Apply custom theme
-                    fig.update_layout(
-                        height=700,
-                        template="plotly_white",
-                        paper_bgcolor="rgba(0,0,0,0)",
-                        plot_bgcolor="rgba(0,0,0,0)",
-                        font=dict(family="Lato, sans-serif", color="#64748b"),
-                        xaxis_rangeslider_visible=False,
-                        legend=dict(orientation="h", y=1.02),
-                        margin=dict(l=10, r=10, t=30, b=10),
-                    )
-                    # Update axes styling
-                    fig.update_xaxes(gridcolor="#f1f5f9", linecolor="#e2e8f0")
-                    fig.update_yaxes(gridcolor="#f1f5f9", linecolor="#e2e8f0")
-                    st.plotly_chart(fig, use_container_width=True)
-                else:
-                    st.warning(f"⚠️ {etf_ticker} 数据不可用")
+        # Modern Pill Navigation
+        st.write("") # Spacer
         
-        # Indicator explanation at the bottom
-        with st.expander("📚 指标解读"):
+        # 1. Selector Row
+        selected_ticker = st.radio(
+            "Select Asset", 
+            TARGET_ETFS, 
+            horizontal=True, 
+            label_visibility="collapsed",
+            key="etf_selector_main"
+        )
+        
+        # 2. Display Area
+        etf_ticker = selected_ticker
+        etf_df = stock_data.get(etf_ticker)
+        
+        # Fallback fetch if needed
+        if etf_df is None or not all(c in etf_df.columns for c in ["Open","High","Low","Close"]):
+            api_detail = get_stock_data([etf_ticker], period=time_range)
+            etf_df = api_detail.get(etf_ticker)
+            
+        # 3. Content Card with Animation
+        if etf_df is not None and not etf_df.empty:
+            st.markdown(f"""
+            <div style="animation: fadeInUp 0.5s ease-out;">
+                <h3 style="margin-top:0; color: #ea580c; display:flex; align-items:center;">
+                    📈 {etf_ticker} <span style="font-size:0.8em; color:#64748b; margin-left:10px; font-weight:400;">{ETF_INFO.get(etf_ticker, {}).get('name', '')}</span>
+                </h3>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Info Section
+            if etf_ticker in ETF_INFO:
+                info = ETF_INFO[etf_ticker]
+                st.markdown(f"""
+                <div style="background:var(--bg-paper); padding:1rem; border-radius:12px; border:1px solid var(--border-subtle); margin-bottom:1.5rem;">
+                    <div style="font-style:italic; margin-bottom:0.5rem;">{info['desc']}</div>
+                    <div style="display:flex; gap:10px; font-size:0.9rem;">
+                        <span style="background:#ecfdf5; color:#059669; padding:2px 8px; border-radius:6px; font-weight:600;">🎯 {info['strategy']}</span>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            # Chart
+            fig = make_subplots(rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.03,
+                                row_heights=[0.5,0.15,0.15,0.1],
+                                subplot_titles=("Price & MAs","RSI","MACD","Volume"))
+            fig.add_trace(go.Candlestick(x=etf_df.index, open=etf_df["Open"], high=etf_df["High"],
+                                            low=etf_df["Low"], close=etf_df["Close"], name="Price"), row=1,col=1)
+            fig.add_trace(go.Scatter(x=etf_df.index, y=etf_df["SMA_20"], name="MA20", line=dict(color="#f59e0b")), row=1,col=1)
+            fig.add_trace(go.Scatter(x=etf_df.index, y=etf_df["SMA_200"], name="MA200", line=dict(color="#3b82f6")), row=1,col=1)
+            if "BB_Upper" in etf_df and "BB_Lower" in etf_df:
+                fig.add_trace(go.Scatter(x=etf_df.index, y=etf_df["BB_Upper"], showlegend=False, line=dict(color="#94a3b8", dash="dot", width=0)), row=1,col=1)
+                fig.add_trace(go.Scatter(x=etf_df.index, y=etf_df["BB_Lower"], showlegend=False, line=dict(color="#94a3b8", dash="dot", width=0),
+                                            fill="tonexty", fillcolor="rgba(148, 163, 184, 0.1)"), row=1,col=1)
+            fig.add_trace(go.Scatter(x=etf_df.index, y=etf_df["RSI"], name="RSI", line=dict(color="#8b5cf6")), row=2,col=1)
+            fig.add_hline(y=70, line_dash="dash", line_color="#e11d48", row=2,col=1)
+            fig.add_hline(y=30, line_dash="dash", line_color="#10b981", row=2,col=1)
+            if "MACD_Hist" in etf_df.columns:
+                fig.add_trace(go.Bar(x=etf_df.index, y=etf_df["MACD_Hist"], name="MACD Hist",
+                                        marker_color=["#10b981" if v>=0 else "#e11d48" for v in etf_df["MACD_Hist"]]), row=3,col=1)
+            if "MACD" in etf_df.columns:
+                fig.add_trace(go.Scatter(x=etf_df.index, y=etf_df["MACD"], name="MACD", line=dict(color="#3b82f6")), row=3,col=1)
+            if "MACD_Signal" in etf_df.columns:
+                fig.add_trace(go.Scatter(x=etf_df.index, y=etf_df["MACD_Signal"], name="Signal", line=dict(color="#f59e0b")), row=3,col=1)
+            if "Volume" in etf_df.columns:
+                colors = ["#e11d48" if r.Open - r.Close >=0 else "#10b981" for _, r in etf_df.iterrows()]
+                fig.add_trace(go.Bar(x=etf_df.index, y=etf_df["Volume"], name="Volume", marker_color=colors), row=4,col=1)
+            
+            # Apply custom theme
+            fig.update_layout(
+                height=700,
+                template="plotly_white",
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(family="Lato, sans-serif", color="#64748b"),
+                xaxis_rangeslider_visible=False,
+                legend=dict(orientation="h", y=1.02),
+                margin=dict(l=10, r=10, t=30, b=10),
+            )
+            fig.update_xaxes(gridcolor="#f1f5f9", linecolor="#e2e8f0")
+            fig.update_yaxes(gridcolor="#f1f5f9", linecolor="#e2e8f0")
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning(f"⚠️ {etf_ticker} 数据不可用")
+        
+        # Indicator explanation at the bottom (Collapsible manual)
+        with st.expander("📚 指标解读手册"):
+            st.markdown("""
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+            """, unsafe_allow_html=True)
             for k,v in INDICATOR_INFO.items():
-                st.markdown(f"**{k}**: {v}")
+                st.markdown(f"<div><strong style='color:#ea580c'>{k}</strong><br><span style='font-size:0.9em; color:#64748b'>{v}</span></div>", unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
 
     # Macro / L1
     with tab2:
