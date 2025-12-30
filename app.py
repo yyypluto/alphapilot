@@ -85,19 +85,274 @@ st.set_page_config(**PAGE_CONFIG)
 st.markdown(
     """
     <style>
+    /* ═══════════════════════════════════════════════════════════════════════
+       ALPHAPILOT - Soft Editorial Design System
+       A refined, paper-like light theme for comfortable reading
+    ═══════════════════════════════════════════════════════════════════════ */
+    
+    /* Google Fonts */
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Lato:wght@400;500;700&family=Source+Code+Pro:wght@400;500&display=swap');
+    
+    /* CSS Variables - Theme: Warm Paper / Editorial */
+    :root {
+        --bg-paper: #fbfbf8;
+        --bg-card: #ffffff;
+        --bg-sidebar: #f4f4f0;
+        
+        --text-primary: #1f2937;    /* Charcoal */
+        --text-secondary: #64748b;  /* Slate */
+        --text-accent: #8b5cf6;     /* Soft Violet */
+        
+        --accent-brand: #ea580c;    /* Burnt Orange */
+        --accent-gold: #fbbf24;     /* Warm Yellow */
+        
+        --status-success: #059669;  /* Emerald */
+        --status-success-bg: #ecfdf5;
+        --status-danger: #e11d48;   /* Rose */
+        --status-danger-bg: #fff1f2;
+        --status-warning: #d97706;  /* Amber */
+        --status-warning-bg: #fffbeb;
+        
+        --shadow-soft: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+        --shadow-hover: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+        --border-subtle: #e2e8f0;
+    }
+    
+    /* Global Styles */
+    .stApp {
+        background-color: var(--bg-paper) !important;
+        background-image: radial-gradient(circle at 50% 0%, #f1f1ee 0%, transparent 70%);
+    }
+    
+    .stApp > header {
+        background: transparent !important;
+    }
+    
+    /* Hide Streamlit branding */
+    #MainMenu, footer, header[data-testid="stHeader"] {
+        visibility: hidden;
+    }
+    
+    /* Typography */
+    html, body, [class*="css"] {
+        font-family: 'Lato', sans-serif !important;
+        color: var(--text-primary) !important;
+        line-height: 1.6;
+    }
+    
+    h1, h2, h3, .stTitle {
+        font-family: 'Playfair Display', serif !important;
+        color: var(--text-primary) !important;
+        font-weight: 600 !important;
+        letter-spacing: -0.02em;
+    }
+    
+    h1 {
+        font-size: 3rem !important;
+        margin-bottom: 0.5rem !important;
+        color: #111827 !important;
+    }
+    
+    h2 {
+        font-size: 1.8rem !important;
+        margin-top: 2rem !important;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid var(--border-subtle);
+    }
+    
+    h3 {
+        font-size: 1.3rem !important;
+        font-weight: 500 !important;
+        color: var(--text-secondary) !important;
+    }
+    
+    /* Helper classes */
+    .stCaption {
+        font-family: 'Playfair Display', serif !important;
+        font-style: italic;
+        color: var(--text-secondary) !important;
+        font-size: 1rem !important;
+    }
+    
+    /* ═══════════════════════════════════════════════════════════════════════
+       METRIC CARDS - Clean Editorial Style
+    ═══════════════════════════════════════════════════════════════════════ */
+    
     div[data-testid="stMetric"] {
-        background-color: #f0f2f6;
-        border-radius: 10px;
-        padding: 12px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        background: var(--bg-card) !important;
+        border: 1px solid var(--border-subtle) !important;
+        border-radius: 16px !important;
+        padding: 1.5rem !important;
+        box-shadow: var(--shadow-soft) !important;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
     }
-    @media (prefers-color-scheme: dark) {
-        div[data-testid="stMetric"] {
-            background-color: #262730;
-            box-shadow: 0 2px 4px rgba(255,255,255,0.05);
-        }
+    
+    div[data-testid="stMetric"]:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-hover) !important;
+        border-color: #cbd5e1 !important;
     }
-    .stDataFrame { font-size: 1.05rem; }
+    
+    div[data-testid="stMetric"] label {
+        color: var(--text-secondary) !important;
+        font-size: 0.8rem !important;
+        font-weight: 700 !important;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    
+    div[data-testid="stMetric"] [data-testid="stMetricValue"] {
+        font-family: 'Playfair Display', serif !important;
+        font-size: 2.2rem !important;
+        color: var(--text-primary) !important;
+        font-weight: 600 !important;
+    }
+    
+    div[data-testid="stMetric"] [data-testid="stMetricDelta"] {
+        font-family: 'Lato', sans-serif !important;
+        font-weight: 600 !important;
+        background: var(--bg-paper);
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 0.9rem !important;
+    }
+    
+    /* ═══════════════════════════════════════════════════════════════════════
+       DATA TABLES - Minimal & Clean
+    ═══════════════════════════════════════════════════════════════════════ */
+    
+    .stDataFrame {
+        border-radius: 16px !important;
+        overflow: hidden !important;
+        box-shadow: var(--shadow-soft);
+        border: 1px solid var(--border-subtle);
+        background: var(--bg-card);
+    }
+    
+    .stDataFrame [data-testid="stDataFrameContainer"] {
+        border: none !important;
+    }
+    
+    .stDataFrame th {
+        background-color: #f8fafc !important;
+        color: var(--text-secondary) !important;
+        font-family: 'Lato', sans-serif !important;
+        font-weight: 700 !important;
+        text-transform: uppercase;
+        font-size: 0.75rem !important;
+        letter-spacing: 0.05em;
+        border-bottom: 1px solid #e2e8f0 !important;
+    }
+    
+    .stDataFrame td {
+        font-family: 'Source Code Pro', monospace !important;
+        color: var(--text-primary) !important;
+        font-size: 0.9rem !important;
+        border-bottom: 1px solid #f1f5f9 !important;
+    }
+    
+    /* ═══════════════════════════════════════════════════════════════════════
+       UI ELEMENTS
+    ═══════════════════════════════════════════════════════════════════════ */
+    
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        background: transparent !important;
+        gap: 2rem;
+        border-bottom: 1px solid var(--border-subtle);
+        padding-bottom: 0px;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        background: transparent !important;
+        color: var(--text-secondary) !important;
+        font-family: 'Lato', sans-serif !important;
+        font-weight: 600 !important;
+        font-size: 1rem !important;
+        padding: 0.5rem 0 !important;
+        border: none !important;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        color: var(--accent-brand) !important;
+        border-bottom: 2px solid var(--accent-brand) !important;
+    }
+    
+    /* Buttons */
+    .stButton > button {
+        background-color: var(--text-primary) !important;
+        color: white !important;
+        border-radius: 30px !important;
+        padding: 0.5rem 2rem !important;
+        font-weight: 600 !important;
+        border: none !important;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        transition: all 0.2s;
+    }
+    
+    .stButton > button:hover {
+        background-color: var(--accent-brand) !important;
+        transform: translateY(-1px);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    }
+    
+    /* Sidebar */
+    [data-testid="stSidebar"] {
+        background-color: var(--bg-sidebar) !important;
+        border-right: 1px solid rgba(0,0,0,0.05) !important;
+    }
+    
+    [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
+        color: var(--text-primary) !important;
+    }
+    
+    /* Expanders */
+    .streamlit-expanderHeader {
+        background-color: var(--bg-card) !important;
+        border-radius: 12px !important;
+        border: 1px solid var(--border-subtle) !important;
+    }
+    
+    .streamlit-expanderContent {
+        background-color: var(--bg-paper) !important;
+        border: 1px solid var(--border-subtle) !important;
+        border-top: none !important;
+        border-radius: 0 0 12px 12px !important;
+    }
+    
+    /* Alerts (Soft) */
+    .stAlert {
+        border-radius: 12px !important;
+        border: none !important;
+    }
+    
+    /* Warning */
+    [data-testid="stAlert"][data-baseweb="notification"] div[role="alert"] {
+        background-color: var(--status-warning-bg) !important;
+        color: var(--status-warning) !important;
+    }
+    
+    /* Success */
+    .stSuccess {
+        background-color: var(--status-success-bg) !important;
+        color: var(--status-success) !important;
+    }
+    
+    /* Info */
+    .stInfo {
+        background-color: #eff6ff !important;
+        color: #3b82f6 !important;
+    }
+    
+    /* Plotly Container */
+    .stPlotlyChart {
+        background: var(--bg-card) !important;
+        border-radius: 16px !important;
+        box-shadow: var(--shadow-soft) !important;
+        padding: 1rem;
+        border: 1px solid var(--border-subtle);
+    }
+    
     </style>
     """,
     unsafe_allow_html=True,
@@ -271,9 +526,44 @@ def load_macro():
 # -----------------------------------------------------------------------------
 # Main
 # -----------------------------------------------------------------------------
+# Custom Plotly theme - Soft Editorial
+ALPHAPILOT_PLOTLY_TEMPLATE = {
+    "layout": {
+        "paper_bgcolor": "rgba(0,0,0,0)",
+        "plot_bgcolor": "rgba(0,0,0,0)",
+        "font": {"family": "Lato, sans-serif", "color": "#64748b"},
+        "title": {"font": {"family": "Playfair Display, serif", "color": "#1f2937", "size": 20}},
+        "xaxis": {
+            "gridcolor": "#f1f5f9",
+            "linecolor": "#e2e8f0",
+            "tickfont": {"color": "#64748b"},
+        },
+        "yaxis": {
+            "gridcolor": "#f1f5f9",
+            "linecolor": "#e2e8f0",
+            "tickfont": {"color": "#64748b"},
+        },
+        "colorway": ["#ea580c", "#059669", "#3b82f6", "#8b5cf6", "#e11d48", "#f59e0b"],
+    }
+}
+
+
 def main():
-    st.title("🚀 AlphaPilot - 工程师的个人美股投资驾驶舱")
-    st.caption("Automated Wealth Management Dashboard | **Keep Calm & DCA On**")
+    # Premium header - Clean Editorial
+    st.markdown(
+        '''
+        <div style="text-align: center; padding: 2rem 0 1rem 0;">
+            <div style="font-family: 'Playfair Display', serif; font-size: 1.2rem; color: #ea580c; font-style: italic;">
+                The Engineer's Wealth Journal
+            </div>
+            <div style="font-size: 3.5rem; color: #1f2937; font-weight: 700; margin-top: -10px;">
+                AlphaPilot
+            </div>
+            <hr style="width: 50px; border-top: 3px solid #ea580c; margin: 1rem auto; opacity: 1;">
+        </div>
+        ''',
+        unsafe_allow_html=True
+    )
 
     # Debug healthcheck ensures log file is created early
     _debug_healthcheck("main_entry")
@@ -483,8 +773,20 @@ def main():
                     if "Volume" in etf_df.columns:
                         colors = ["red" if r.Open - r.Close >=0 else "green" for _, r in etf_df.iterrows()]
                         fig.add_trace(go.Bar(x=etf_df.index, y=etf_df["Volume"], name="Volume", marker_color=colors), row=4,col=1)
-                    fig.update_layout(height=700, template="plotly_dark", xaxis_rangeslider_visible=False, legend=dict(orientation="h", y=1.02),
-                                      margin=dict(l=10,r=10,t=30,b=10))
+                    # Apply custom theme
+                    fig.update_layout(
+                        height=700,
+                        template="plotly_white",
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        font=dict(family="Lato, sans-serif", color="#64748b"),
+                        xaxis_rangeslider_visible=False,
+                        legend=dict(orientation="h", y=1.02),
+                        margin=dict(l=10, r=10, t=30, b=10),
+                    )
+                    # Update axes styling
+                    fig.update_xaxes(gridcolor="#f1f5f9", linecolor="#e2e8f0")
+                    fig.update_yaxes(gridcolor="#f1f5f9", linecolor="#e2e8f0")
                     st.plotly_chart(fig, use_container_width=True)
                 else:
                     st.warning(f"⚠️ {etf_ticker} 数据不可用")
@@ -507,10 +809,19 @@ def main():
                 qqq_series = pivot_close["QQQ"].dropna()
                 ratio_series = (pivot_close["SOXX"] / pivot_close["QQQ"]).dropna()
                 fig1 = make_subplots(specs=[[{"secondary_y": True}]])
-                fig1.add_trace(go.Scatter(x=qqq_series.index, y=qqq_series, name="QQQ", line=dict(color="#4cc9f0")), secondary_y=False)
+                fig1.add_trace(go.Scatter(x=qqq_series.index, y=qqq_series, name="QQQ", line=dict(color="#3b82f6", width=2)), secondary_y=False)
                 fig1.add_trace(go.Scatter(x=ratio_series.index, y=ratio_series, name="SOXX/QQQ", fill="tozeroy",
-                                          line=dict(color="#f72585"), opacity=0.25), secondary_y=True)
-                fig1.update_layout(template="plotly_dark", height=360, title="QQQ & SOXX/QQQ")
+                                          line=dict(color="#ea580c"), opacity=0.1), secondary_y=True)
+                fig1.update_layout(
+                    template="plotly_white", 
+                    height=360, 
+                    title="QQQ & SOXX/QQQ",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    font=dict(family="Lato, sans-serif", color="#64748b"),
+                )
+                fig1.update_xaxes(gridcolor="#f1f5f9")
+                fig1.update_yaxes(gridcolor="#f1f5f9")
                 st.plotly_chart(fig1, use_container_width=True)
                 if len(qqq_series)>20 and len(ratio_series)>20 and qqq_series.iloc[-1]>qqq_series.iloc[-20:].max() and ratio_series.iloc[-1]<ratio_series.iloc[-20:].max():
                     st.warning("⚠️ 硬件动能衰竭：QQQ 创新高但 SOXX/QQQ 走低")
@@ -521,8 +832,17 @@ def main():
                 xlp_xly = (pivot_close["XLP"]/pivot_close["XLY"]).dropna()
                 ma20 = xlp_xly.rolling(20).mean()
                 fig2 = go.Figure()
-                fig2.add_trace(go.Scatter(x=ma20.index, y=ma20, name="XLP/XLY 20MA", line=dict(color="#ffb703")))
-                fig2.update_layout(template="plotly_dark", height=300, title="Defensive vs Cyclical")
+                fig2.add_trace(go.Scatter(x=ma20.index, y=ma20, name="XLP/XLY 20MA", line=dict(color="#f59e0b", width=2)))
+                fig2.update_layout(
+                    template="plotly_white", 
+                    height=300, 
+                    title="Defensive vs Cyclical",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    font=dict(family="Lato, sans-serif", color="#64748b"),
+                )
+                fig2.update_xaxes(gridcolor="#f1f5f9")
+                fig2.update_yaxes(gridcolor="#f1f5f9")
                 st.plotly_chart(fig2, use_container_width=True)
                 if len(ma20.dropna())>5 and ma20.iloc[-1] > ma20.iloc[-5:].min()*1.05:
                     st.info("⚠️ 防御情绪升温：XLP/XLY 快速抬升")
@@ -534,7 +854,13 @@ def main():
                 recent = close_for_corr.tail(90)
                 corr_mat = recent.corr()
                 fig3 = px.imshow(corr_mat, text_auto=".2f", color_continuous_scale="RdBu_r", zmin=-1, zmax=1, title="近90日资产相关性")
-                fig3.update_layout(template="plotly_dark", height=360)
+                fig3.update_layout(
+                    template="plotly_white", 
+                    height=360,
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    font=dict(family="Lato, sans-serif", color="#64748b"),
+                )
                 st.plotly_chart(fig3, use_container_width=True)
                 if "TLT" in corr_mat and "QQQ" in corr_mat and corr_mat.loc["TLT","QQQ"]>0:
                     st.warning("TLT 与 QQQ 由负转正 → 流动性风险/股债双杀风险")

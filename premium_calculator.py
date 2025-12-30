@@ -531,26 +531,26 @@ def render_premium_dashboard():
     column_order = ["ETF代码", "名称", "现价", "昨日净值", "估算净值", "溢价率(数值)", "实时溢价率", "建议操作"]
     df_display = df_display[column_order]
     
-    # 样式函数
+    # 样式函数 - Soft Editorial Theme
     def highlight_premium(val):
         if isinstance(val, str) and "%" in val:
             try:
                 pct = float(val.replace("%", "").replace("+", ""))
                 if pct > 3:
-                    return "background-color: rgba(255,0,0,0.2); color: #ff4444; font-weight: bold"
+                    return "background-color: #fff1f2; color: #e11d48; font-weight: 600; border-radius: 12px; padding: 2px 8px" # Rose
                 elif pct < 0:
-                    return "background-color: rgba(0,255,0,0.2); color: #00cc00; font-weight: bold"
+                    return "background-color: #ecfdf5; color: #059669; font-weight: 600; border-radius: 12px; padding: 2px 8px" # Emerald
             except ValueError:
                 pass
         return ""
     
     def highlight_action(val):
         if "🔴" in str(val):
-            return "background-color: rgba(255,0,0,0.15); color: #ff4444"
+            return "background-color: #fff1f2; color: #e11d48; border-radius: 12px"
         elif "🟢" in str(val):
-            return "background-color: rgba(0,255,0,0.15); color: #00cc00"
+            return "background-color: #ecfdf5; color: #059669; border-radius: 12px"
         elif "🟠" in str(val):
-            return "background-color: rgba(255,165,0,0.15); color: #ffa500"
+            return "background-color: #fffbeb; color: #d97706; border-radius: 12px"
         return ""
     
     styled_df = df_display.style.map(highlight_premium, subset=["实时溢价率"]).map(
