@@ -148,50 +148,39 @@ def get_etf_nav(etf_code: str) -> Optional[float]:
 def get_nasdaq_future_change() -> Tuple[Optional[float], Optional[float], Optional[str]]:
     """
     获取纳指期货/指数的涨跌幅
-    优先使用 yfinance，失败时使用 AkShare 纳斯达克指数作为备选
+    优先使用 AkShare（更稳定），失败时使用 yfinance 作为备选
     Returns:
         (涨跌幅百分比, 当前价格, 错误信息)
     """
     errors = []
     
-    # 方法1: 尝试 yfinance
-    if yf is not None:
-        try:
-            ticker = yf.Ticker("NQ=F")
-            # 使用 fast_info 避免过多请求
-            try:
-                fast_info = ticker.fast_info
-                current_price = getattr(fast_info, 'last_price', None)
-                prev_close = getattr(fast_info, 'previous_close', None)
-                if current_price and prev_close:
-                    change_pct = ((current_price - prev_close) / prev_close) * 100
-                    return change_pct, current_price, None
-            except Exception:
-                pass
-            
-            # 备选: 使用历史数据
-            hist = ticker.history(period="5d", interval="1d")
-            if hist is not None and len(hist) >= 2:
-                prev_close = hist["Close"].iloc[-2]
-                curr_close = hist["Close"].iloc[-1]
-                change_pct = ((curr_close - prev_close) / prev_close) * 100
-                return change_pct, curr_close, None
-        except Exception as e:
-            errors.append(f"yfinance: {str(e)[:50]}")
-    
-    # 方法2: 使用 AkShare 获取纳斯达克综合指数
+    # 方法1: 使用 AkShare 获取纳斯达克综合指数（优先，更稳定）
     if ak is not None:
         try:
             # 使用新浪纳斯达克指数数据
             df = ak.index_us_stock_sina(symbol=".IXIC")
             if df is not None and not df.empty and len(df) >= 2:
-                # 获取最近两天数据计算涨跌幅
                 curr_close = float(df.iloc[-1]["close"])
                 prev_close = float(df.iloc[-2]["close"])
                 change_pct = ((curr_close - prev_close) / prev_close) * 100
                 return change_pct, curr_close, None
         except Exception as e:
             errors.append(f"akshare纳指: {str(e)[:50]}")
+    
+    # 方法2: 尝试 yfinance（多个符号）
+    if yf is not None:
+        for symbol in ["NQ=F", "^IXIC", "^NDX"]:
+            try:
+                ticker = yf.Ticker(symbol)
+                hist = ticker.history(period="5d", interval="1d")
+                if hist is not None and not hist.empty and len(hist) >= 2:
+                    prev_close = hist["Close"].iloc[-2]
+                    curr_close = hist["Close"].iloc[-1]
+                    if not pd.isna(curr_close) and not pd.isna(prev_close) and prev_close > 0:
+                        change_pct = ((curr_close - prev_close) / prev_close) * 100
+                        return change_pct, curr_close, None
+            except Exception as e:
+                errors.append(f"yfinance({symbol}): {str(e)[:30]}")
     
     error_msg = "; ".join(errors) if errors else "无法获取期货/指数数据"
     return None, None, error_msg
@@ -200,67 +189,68 @@ def get_nasdaq_future_change() -> Tuple[Optional[float], Optional[float], Option
 def get_forex_usd_cny() -> Tuple[Optional[float], Optional[float], Optional[str]]:
     """
     获取美元兑人民币汇率
-    优先使用 yfinance，失败时使用 AkShare 作为备选
+    优先使用 AkShare（更稳定），失败时使用 yfinance 作为备选
     Returns:
         (汇率, 涨跌幅百分比, 错误信息)
     """
     errors = []
     
-    # 方法1: 尝试 yfinance
-    if yf is not None:
-        try:
-            ticker = yf.Ticker("CNY=X")
-            try:
-                fast_info = ticker.fast_info
-                rate = getattr(fast_info, 'last_price', None)
-                prev_close = getattr(fast_info, 'previous_close', None)
-                if rate and prev_close:
-                    change_pct = ((rate - prev_close) / prev_close) * 100
-                    return rate, change_pct, None
-            except Exception:
-                pass
-            
-            hist = ticker.history(period="5d", interval="1d")
-            if hist is not None and len(hist) >= 1:
-                rate = hist["Close"].iloc[-1]
-                if len(hist) >= 2:
-                    prev = hist["Close"].iloc[-2]
-                    change_pct = ((rate - prev) / prev) * 100
-                else:
-                    change_pct = 0.0
-                return rate, change_pct, None
-        except Exception as e:
-            errors.append(f"yfinance: {str(e)[:50]}")
-    
-    # 方法2: 使用 AkShare 获取汇率
+    # 方法1: 使用 AkShare currency_boc_safe (中国银行外汇牌价)
     if ak is not None:
         try:
-            # 使用外汇实时数据 - fx_spot_quote 返回的列是 ['货币对', '买报价', '卖报价']
-            df = ak.fx_spot_quote()
-            if df is not None and not df.empty:
-                usd_cny = df[df["货币对"] == "USD/CNY"]
-                if not usd_cny.empty:
-                    # 使用买报价作为汇率
-                    rate = float(usd_cny.iloc[0]["买报价"])
-                    # fx_spot_quote 没有涨跌幅，设为0
-                    return rate, 0.0, None
-        except Exception as e:
-            errors.append(f"akshare外汇: {str(e)[:50]}")
-        
-        try:
-            # 备选: 使用中国银行汇率
-            df = ak.currency_boc_sina()
-            if df is not None and not df.empty:
-                # 取最新一行（按日期排序后）
-                latest = df.iloc[-1]
-                rate = float(latest.get("中行汇买价", 0)) / 100  # 转换单位
-                if rate > 0:
-                    return rate, 0.0, None  # BOC 数据没有涨跌幅
+            df = ak.currency_boc_safe()
+            if df is not None and not df.empty and "美元" in df.columns:
+                # 获取最近两天数据
+                if len(df) >= 2:
+                    curr_rate = float(df.iloc[-1]["美元"]) / 100  # 转换单位
+                    prev_rate = float(df.iloc[-2]["美元"]) / 100
+                    change_pct = ((curr_rate - prev_rate) / prev_rate) * 100
+                    return curr_rate, change_pct, None
+                elif len(df) >= 1:
+                    curr_rate = float(df.iloc[-1]["美元"]) / 100
+                    return curr_rate, 0.0, None
         except Exception as e:
             errors.append(f"akshare中行: {str(e)[:50]}")
+        
+        try:
+            # 备选: fx_spot_quote (实时汇率)
+            df = ak.fx_spot_quote()
+            if df is not None and not df.empty:
+                # 尝试获取 EUR/CNY 并通过 EUR/USD 反推
+                eur_cny = df[df["货币对"] == "EUR/CNY"]
+                if not eur_cny.empty:
+                    eur_rate = eur_cny.iloc[0]["买报价"]
+                    if pd.notna(eur_rate):
+                        # EUR/USD 大约 1.08-1.12，估算 USD/CNY
+                        estimated_rate = float(eur_rate) / 1.10
+                        return estimated_rate, 0.0, None
+        except Exception as e:
+            errors.append(f"akshare外汇: {str(e)[:50]}")
     
-    error_msg = "; ".join(errors) if errors else "无法获取汇率数据"
-    return None, None, error_msg
+    # 方法2: 尝试 yfinance（使用不同的符号）
+    if yf is not None:
+        for symbol in ["USDCNY=X", "CNY=X"]:
+            try:
+                ticker = yf.Ticker(symbol)
+                hist = ticker.history(period="5d", interval="1d")
+                if hist is not None and not hist.empty and len(hist) >= 1:
+                    rate = hist["Close"].iloc[-1]
+                    if not pd.isna(rate) and rate > 0:
+                        if len(hist) >= 2:
+                            prev = hist["Close"].iloc[-2]
+                            change_pct = ((rate - prev) / prev) * 100
+                        else:
+                            change_pct = 0.0
+                        return rate, change_pct, None
+            except Exception as e:
+                errors.append(f"yfinance({symbol}): {str(e)[:30]}")
+    
+    # 方法3: 使用固定汇率作为后备（显示警告）
+    fallback_rate = 7.25
+    if errors:
+        return fallback_rate, 0.0, f"使用估算汇率"
+    
+    return fallback_rate, 0.0, "使用估算汇率"
 
 
 @st.cache_data(ttl=300)  # 缓存5分钟

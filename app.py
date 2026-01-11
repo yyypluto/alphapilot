@@ -121,7 +121,60 @@ st.markdown(
     /* Global Styles */
     .stApp {
         background-color: var(--bg-paper) !important;
-        background-image: radial-gradient(circle at 50% 0%, #f1f1ee 0%, transparent 70%);
+        background-image: radial-gradient(circle at 50% 0%, #fff7ed 0%, transparent 70%); /* Warm light top */
+        overflow-x: hidden;
+    }
+
+    /* Ambient Bokeh Animation */
+    .stApp::before {
+        content: "";
+        position: fixed;
+        top: -10%;
+        left: -10%;
+        width: 50%;
+        height: 50%;
+        background: radial-gradient(circle, rgba(234, 88, 12, 0.08) 0%, transparent 70%);
+        filter: blur(60px);
+        border-radius: 50%;
+        animation: float 20s infinite ease-in-out;
+        z-index: -1;
+        pointer-events: none;
+    }
+
+    .stApp::after {
+        content: "";
+        position: fixed;
+        bottom: -10%;
+        right: -10%;
+        width: 60%;
+        height: 60%;
+        background: radial-gradient(circle, rgba(5, 150, 105, 0.05) 0%, transparent 70%);
+        filter: blur(80px);
+        border-radius: 50%;
+        animation: float 25s infinite ease-in-out reverse;
+        z-index: -1;
+        pointer-events: none;
+    }
+    
+    /* Paper Grain Texture Overlay */
+    /* We use a simple repeating radial gradient pattern to simulate texture efficiently */
+    .app-texture {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.03'/%3E%3C/svg%3E");
+        pointer-events: none;
+        z-index: 9999; /* On top of everything to give texture */
+        opacity: 0.6;
+    }
+    
+    @keyframes float {
+        0% { transform: translate(0, 0) rotate(0deg); }
+        33% { transform: translate(30px, 50px) rotate(10deg); }
+        66% { transform: translate(-20px, 20px) rotate(-5deg); }
+        100% { transform: translate(0, 0) rotate(0deg); }
     }
     
     .stApp > header {
@@ -218,7 +271,7 @@ st.markdown(
     }
     
     /* ═══════════════════════════════════════════════════════════════════════
-       DATA TABLES - Minimal & Clean
+       DATA TABLES - Minimal & Clean (Light Theme Override)
     ═══════════════════════════════════════════════════════════════════════ */
     
     .stDataFrame {
@@ -233,9 +286,21 @@ st.markdown(
         border: none !important;
     }
     
-    .stDataFrame th {
+    /* Force light theme for dataframe */
+    .stDataFrame [data-testid="stDataFrameContainer"] > div,
+    .stDataFrame iframe,
+    .stDataFrame [class*="glide-data-grid"],
+    [data-testid="stDataFrame"] > div > div {
+        background-color: #ffffff !important;
+    }
+    
+    /* Table header cells */
+    .stDataFrame th,
+    [data-testid="stDataFrame"] th,
+    .dvn-scroller [role="columnheader"],
+    .glideDataEditor [role="columnheader"] {
         background-color: #f8fafc !important;
-        color: var(--text-secondary) !important;
+        color: #64748b !important;
         font-family: 'Lato', sans-serif !important;
         font-weight: 700 !important;
         text-transform: uppercase;
@@ -244,11 +309,28 @@ st.markdown(
         border-bottom: 1px solid #e2e8f0 !important;
     }
     
-    .stDataFrame td {
+    /* Table body cells */
+    .stDataFrame td,
+    [data-testid="stDataFrame"] td,
+    .dvn-scroller [role="gridcell"],
+    .glideDataEditor [role="gridcell"] {
+        background-color: #ffffff !important;
         font-family: 'Source Code Pro', monospace !important;
-        color: var(--text-primary) !important;
+        color: #1f2937 !important;
         font-size: 0.9rem !important;
         border-bottom: 1px solid #f1f5f9 !important;
+    }
+    
+    /* Row hover effect */
+    .dvn-scroller [role="row"]:hover [role="gridcell"],
+    .glideDataEditor [role="row"]:hover [role="gridcell"] {
+        background-color: #f8fafc !important;
+    }
+    
+    /* Selected cell */
+    .dvn-scroller [role="gridcell"][aria-selected="true"],
+    .glideDataEditor [role="gridcell"][aria-selected="true"] {
+        background-color: #eff6ff !important;
     }
     
     /* ═══════════════════════════════════════════════════════════════════════
@@ -296,54 +378,63 @@ st.markdown(
         box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
     }
     
-    /* Sidebar */
+    /* ═══════════════════════════════════════════════════════════════════════
+       SIDEBAR & INPUTS (Soft Editorial)
+    ═══════════════════════════════════════════════════════════════════════ */
+    
     [data-testid="stSidebar"] {
-        background-color: var(--bg-sidebar) !important;
-        border-right: 1px solid rgba(0,0,0,0.05) !important;
+        background-color: #f8fafc !important; /* Cool grey tint for contrast */
+        border-right: 1px solid var(--border-subtle) !important;
     }
     
     [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
         color: var(--text-primary) !important;
+        font-family: 'Playfair Display', serif !important;
     }
     
-    /* Expanders */
-    .streamlit-expanderHeader {
-        background-color: var(--bg-card) !important;
+    /* Input Fields */
+    .stSelectbox > div > div {
+        background-color: #ffffff !important;
+        border-radius: 12px !important;
+        border: 1px solid var(--border-subtle) !important;
+        color: var(--text-primary) !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+    }
+    
+    .stMultiSelect > div > div {
+        background-color: #ffffff !important;
         border-radius: 12px !important;
         border: 1px solid var(--border-subtle) !important;
     }
     
-    .streamlit-expanderContent {
-        background-color: var(--bg-paper) !important;
+    /* Expanders in Sidebar */
+    [data-testid="stSidebar"] .streamlit-expanderHeader {
+        background-color: transparent !important;
+        border: none !important;
+        font-weight: 600 !important;
+        color: var(--text-secondary) !important;
+    }
+    
+    [data-testid="stSidebar"] .streamlit-expanderContent {
+        background-color: transparent !important;
+        border: none !important;
+    }
+    
+    /* Expanders (Global / Main) */
+    .stMain .streamlit-expanderHeader {
+        background-color: var(--bg-card) !important;
+        border-radius: 12px !important;
+        border: 1px solid var(--border-subtle) !important;
+        box-shadow: var(--shadow-soft);
+    }
+    
+    .stMain .streamlit-expanderContent {
+        background-color: var(--bg-card) !important; /* White card for content */
         border: 1px solid var(--border-subtle) !important;
         border-top: none !important;
         border-radius: 0 0 12px 12px !important;
     }
-    
-    /* Alerts (Soft) */
-    .stAlert {
-        border-radius: 12px !important;
-        border: none !important;
-    }
-    
-    /* Warning */
-    [data-testid="stAlert"][data-baseweb="notification"] div[role="alert"] {
-        background-color: var(--status-warning-bg) !important;
-        color: var(--status-warning) !important;
-    }
-    
-    /* Success */
-    .stSuccess {
-        background-color: var(--status-success-bg) !important;
-        color: var(--status-success) !important;
-    }
-    
-    /* Info */
-    .stInfo {
-        background-color: #eff6ff !important;
-        color: #3b82f6 !important;
-    }
-    
+
     /* Plotly Container */
     .stPlotlyChart {
         background: var(--bg-card) !important;
@@ -352,6 +443,10 @@ st.markdown(
         padding: 1rem;
         border: 1px solid var(--border-subtle);
     }
+    
+    /* ═══════════════════════════════════════════════════════════════════════
+       DIVIDERS
+    ═══════════════════════════════════════════════════════════════════════ */
     
     </style>
     """,
@@ -414,6 +509,83 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
+
+# -----------------------------------------------------------------------------
+# Styled Components (Frontend Design)
+# -----------------------------------------------------------------------------
+def render_etf_stats(df: pd.DataFrame):
+    if df is None or df.empty:
+        return ""
+    
+    last = df.iloc[-1]
+    prev = df.iloc[-2]
+    
+    # Calculate metrics
+    price = last["Close"]
+    change = price - prev["Close"]
+    pct_change = (change / prev["Close"]) * 100
+    rsi = last.get("RSI", 0)
+    
+    # Determine colors
+    if change >= 0:
+        change_color = "#059669" # Emerald
+        change_bg = "#ecfdf5"    # Emerald-50
+        sign = "+"
+        arrow = "▲"
+    else:
+        change_color = "#e11d48" # Rose
+        change_bg = "#fff1f2"    # Rose-50
+        sign = ""
+        arrow = "▼"
+    
+    # RSI Status
+    rsi_status = "Neutral"
+    rsi_color = "#64748b"
+    if rsi > 70: 
+        rsi_status = "Overbought"
+        rsi_color = "#e11d48"
+    elif rsi < 30: 
+        rsi_status = "Oversold"
+        rsi_color = "#059669"
+    
+    # Build HTML with single-line styles to avoid rendering issues
+    container_style = "display:flex;gap:1.5rem;align-items:center;margin-bottom:0.5rem;background:#ffffff;padding:1rem 1.5rem;border-radius:16px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);border:1px solid #f1f5f9;"
+    label_style = "font-size:0.8rem;color:#64748b;font-weight:600;text-transform:uppercase;"
+    price_style = "font-family:'Source Code Pro',monospace;font-size:1.5rem;font-weight:600;color:#1f2937;"
+    divider_style = "border-left:1px solid #e2e8f0;height:40px;"
+    change_style = f"font-family:'Source Code Pro',monospace;font-size:1.1rem;font-weight:600;background-color:{change_bg};color:{change_color};padding:4px 12px;border-radius:8px;display:inline-block;margin-top:2px;"
+    rsi_container_style = "display:flex;align-items:center;gap:8px;margin-top:2px;"
+    rsi_value_style = "font-family:'Source Code Pro',monospace;font-size:1.1rem;font-weight:600;color:#1f2937;"
+    rsi_badge_style = f"font-size:0.75rem;background:{rsi_color}15;color:{rsi_color};padding:2px 8px;border-radius:12px;font-weight:600;"
+    
+    return f'<div style="{container_style}"><div><div style="{label_style}">Latest Price</div><div style="{price_style}">${price:.2f}</div></div><div style="{divider_style}"></div><div><div style="{label_style}">Daily Change</div><div style="{change_style}">{arrow} {sign}{change:.2f} ({sign}{pct_change:.2f}%)</div></div><div style="{divider_style}"></div><div><div style="{label_style}">RSI (14)</div><div style="{rsi_container_style}"><span style="{rsi_value_style}">{rsi:.1f}</span><span style="{rsi_badge_style}">{rsi_status}</span></div></div></div>'
+
+def render_insight_card(title, content, type="warning"):
+    colors = {
+        "warning": {"bg": "#fffbeb", "border": "#f59e0b", "icon": "⚡️"},
+        "info": {"bg": "#eff6ff", "border": "#3b82f6", "icon": "💡"},
+        "danger": {"bg": "#fef2f2", "border": "#ef4444", "icon": "🚨"},
+    }
+    style = colors.get(type, colors["warning"])
+    
+    st.markdown(f"""
+    <div style="
+        background: {style['bg']}; 
+        border-left: 4px solid {style['border']}; 
+        padding: 1.5rem; 
+        border-radius: 0 12px 12px 0; 
+        margin: 1rem 0;
+        font-family: 'Lato', sans-serif;">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 0.5rem;">
+            <span style="font-size: 1.2rem;">{style['icon']}</span>
+            <span style="font-weight: 700; color: #1f2937; font-size: 1.1rem; font-family: 'Playfair Display', serif;">{title}</span>
+        </div>
+        <div style="color: #4b5563; font-size: 1rem; line-height: 1.6;">
+            {content}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 # -----------------------------------------------------------------------------
@@ -606,6 +778,9 @@ ALPHAPILOT_PLOTLY_TEMPLATE = {
 
 
 def main():
+    # Inject grain texture
+    st.markdown('<div class="app-texture"></div>', unsafe_allow_html=True)
+
     # Premium header - Clean Editorial
     st.markdown(
         '''
@@ -827,6 +1002,9 @@ def main():
                 </div>
                 """, unsafe_allow_html=True)
 
+            # Quick Stats Banner
+            st.markdown(render_etf_stats(etf_df), unsafe_allow_html=True)
+
             # Chart
             fig = make_subplots(rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.03,
                                 row_heights=[0.5,0.15,0.15,0.1],
@@ -907,7 +1085,11 @@ def main():
                 fig1.update_yaxes(gridcolor="#f1f5f9")
                 st.plotly_chart(fig1, use_container_width=True)
                 if len(qqq_series)>20 and len(ratio_series)>20 and qqq_series.iloc[-1]>qqq_series.iloc[-20:].max() and ratio_series.iloc[-1]<ratio_series.iloc[-20:].max():
-                    st.warning("⚠️ 硬件动能衰竭：QQQ 创新高但 SOXX/QQQ 走低")
+                    render_insight_card(
+                        "硬件动能衰竭预警", 
+                        "QQQ 创出新高的同时，芯片股相对于 QQQ 的强度 (SOXX/QQQ) 却在走低。这通常意味着市场由少数权重股拉动，由于芯片是本轮 AI 硬件周期的核心，这种背离值得警惕。", 
+                        "warning"
+                    )
 
             # 聪明钱避险雷达
             if "XLP" in pivot_close and "XLY" in pivot_close:
@@ -928,7 +1110,11 @@ def main():
                 fig2.update_yaxes(gridcolor="#f1f5f9")
                 st.plotly_chart(fig2, use_container_width=True)
                 if len(ma20.dropna())>5 and ma20.iloc[-1] > ma20.iloc[-5:].min()*1.05:
-                    st.info("⚠️ 防御情绪升温：XLP/XLY 快速抬升")
+                    render_insight_card(
+                        "防御情绪快速升温",
+                        "必须消费品 (XLP) 相对 可选消费品 (XLY) 的比率在短期内快速抬升。这表明大资金正在从进攻转向防御，通常是市场回调的前兆。",
+                        "info"
+                    )
 
             # 相关性热力图
             corr_cols = [c for c in ["VOO","QQQ","TLT","SMH"] if c in pivot_close]
@@ -946,7 +1132,11 @@ def main():
                 )
                 st.plotly_chart(fig3, use_container_width=True)
                 if "TLT" in corr_mat and "QQQ" in corr_mat and corr_mat.loc["TLT","QQQ"]>0:
-                    st.warning("TLT 与 QQQ 由负转正 → 流动性风险/股债双杀风险")
+                    render_insight_card(
+                        "股债相关性异常警报",
+                        "长期以来 TLT (美债) 与 QQQ (纳指) 呈负相关（股债跷跷板）。近期相关性转正，可能意味着流动性风险上升，警惕股债双杀。",
+                        "danger"
+                    )
         else:
             st.warning("L1 数据不足，无法展示宏观/L1 分析。")
 
