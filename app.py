@@ -20,6 +20,7 @@ from config import (
     TIME_RANGES,
 )
 from db_manager import fetch_macro, fetch_market_daily
+from notifications import send_feishu_alert
 from utils import analyze_smh_qqq_rs, calculate_divergence_metrics, get_fear_and_greed, get_stock_data
 from premium_calculator import render_premium_dashboard
 
@@ -1165,6 +1166,147 @@ def main():
                         f"{signal}  {dd_text}",
                         "warning" if "🔴" in str(signal) else ("info" if "🟠" in str(signal) else "info"),
                     )
+
+                    # 状态集建议开关
+                    show_state_advice = st.toggle("📊 显示状态集建议", value=False, key="state_advice_toggle")
+                    if show_state_advice:
+                        # 通知设置（飞书）
+                        enable_feishu = st.toggle(
+                            "🔔 Stage 切换时通知飞书机器人",
+                            value=False,
+                            key="enable_feishu_stage_alert",
+                            help="当阶段发生切换时发送飞书消息；同一交易日内同一跃迁只提醒一次（需配置 FEISHU_WEBHOOK 环境变量）。",
+                        )
+
+                        # 计算 SOXX/QQQ Ratio 趋势
+                        ratio_series = (pivot_close["SOXX"] / pivot_close["QQQ"]).dropna()
+                        ratio_trend_up = False
+                        if len(ratio_series) >= 20:
+                            ratio_sma20 = ratio_series.rolling(20).mean()
+                            if len(ratio_sma20) >= 2 and ratio_sma20.iloc[-1] > ratio_sma20.iloc[-5]:
+                                ratio_trend_up = True
+
+                        # 风险补充：TLT 与 QQQ 正相关且 TLT 暴跌（股债双杀风险）
+                        bonds_crash_risk = False
+                        try:
+                            if "TLT" in pivot_close and "QQQ" in pivot_close:
+                                df_corr = pivot_close[["TLT", "QQQ"]].dropna().tail(60)
+                                if len(df_corr) >= 20:
+                                    corr_tlt_qqq = df_corr["TLT"].pct_change().corr(df_corr["QQQ"].pct_change())
+                                    tlt_dd_20 = df_corr["TLT"].iloc[-1] / df_corr["TLT"].rolling(20, min_periods=5).max().iloc[-1] - 1
+                                    if pd.notna(corr_tlt_qqq) and pd.notna(tlt_dd_20):
+                                        bonds_crash_risk = (corr_tlt_qqq > 0) and (tlt_dd_20 < -0.05)
+                        except Exception:
+                            bonds_crash_risk = False
+
+                        # 确定当前状态
+                        if ("🔴" in str(signal)) or bonds_crash_risk:
+                            current_state = 2  # Escape Mode
+                        elif "🟠" in str(signal):
+                            current_state = 1  # Defense Mode
+                        else:
+                            current_state = 0  # Attack Mode (绿色 或 Ratio 上涨)
+
+                        state_configs = {
+                            0: {
+                                "name": "⚔️ State 0: 进攻模式 (Attack Mode)",
+                                "signal": "SOXX/QQQ Ratio 趋势向上 或 Divergence 为绿色",
+                                "position": "100% QLD（或 50% QLD + 50% QQQ）",
+                                "logic": "硬件基建疯狂，应用端跟进，牛市主升浪。<strong>这时候要贪婪。</strong>",
+                                "color": "#16a34a",
+                                "bg": "#f0fdf4",
+                            },
+                            1: {
+                                "name": "🛡️ State 1: 防御模式 (Defense Mode)",
+                                "signal": "Divergence 亮起 🟠 橙色预警（QQQ 新高，但 SOXX 滞涨）",
+                                "position": "卖出所有 QLD，换成 QQQ（1倍杠杆）",
+                                "logic": "动能减弱，再拿 2倍杠杆风险收益比（Sharpe Ratio）变差。降回 1倍，既不踏空，又规避了杠杆损耗。",
+                                "color": "#ea580c",
+                                "bg": "#fff7ed",
+                            },
+                            2: {
+                                "name": "🚨 State 2: 撤退模式 (Escape Mode)",
+                                "signal": "Divergence 亮起 🔴 红色警报（严重背离）或 TLT 与 QQQ 正相关且 TLT 暴跌",
+                                "position": "卖出 QQQ，换成 SGOV / 现金",
+                                "logic": "市场即将反转，<strong>保住胜利果实。</strong>",
+                                "color": "#dc2626",
+                                "bg": "#fef2f2",
+                            },
+                        }
+
+                        # 任意状态切换时通知（按交易日去重，避免刷屏）
+                        prev_state = st.session_state.get("_prev_ai_div_state")
+                        if prev_state is None:
+                            st.session_state["_prev_ai_div_state"] = current_state
+                        else:
+                            if enable_feishu and current_state != prev_state:
+                                # 交易日：尽量使用 div_df 的最新日期（更贴近数据），否则用本地日期兜底
+                                trade_day = None
+                                try:
+                                    if div_df is not None and (not div_df.empty):
+                                        trade_day = pd.to_datetime(div_df.index[-1]).date().isoformat()
+                                except Exception:
+                                    trade_day = None
+                                if not trade_day:
+                                    trade_day = dt.date.today().isoformat()
+
+                                dedup_key = f"{trade_day}:{prev_state}->{current_state}"
+                                sent_keys = st.session_state.get("_feishu_sent_transition_keys", set())
+
+                                # session_state 里可能已有非 set 的脏值，做一次保护
+                                if not isinstance(sent_keys, set):
+                                    sent_keys = set()
+
+                                if dedup_key in sent_keys:
+                                    st.session_state["_prev_ai_div_state"] = current_state
+                                    return
+
+                                title = f"AI 状态机切换：Stage {prev_state} → Stage {current_state}"
+                                details = [
+                                    f"Divergence: {signal}",
+                                ]
+                                try:
+                                    if pd.notna(qqq_dd) and pd.notna(soxx_dd):
+                                        details.append(f"QQQ DD: {qqq_dd:.1%} | SOXX DD: {soxx_dd:.1%}")
+                                except Exception:
+                                    pass
+                                if bonds_crash_risk:
+                                    details.append("风险因子：TLT 与 QQQ 正相关 + TLT 暴跌")
+                                ok = send_feishu_alert(title, "\n".join(details))
+                                if ok:
+                                    sent_keys.add(dedup_key)
+                                    st.session_state["_feishu_sent_transition_keys"] = sent_keys
+
+                            st.session_state["_prev_ai_div_state"] = current_state
+
+                        cfg = state_configs[current_state]
+                        st.markdown(
+                            f"""
+                            <div style="background:{cfg['bg']}; border-left:4px solid {cfg['color']}; padding:16px 20px; border-radius:8px; margin:12px 0;">
+                                <div style="font-size:1.1rem; font-weight:700; color:{cfg['color']}; margin-bottom:8px;">{cfg['name']}</div>
+                                <div style="font-size:0.9rem; color:#475569; margin-bottom:6px;"><strong>信号：</strong>{cfg['signal']}</div>
+                                <div style="font-size:0.9rem; color:#475569; margin-bottom:6px;"><strong>持仓建议：</strong>{cfg['position']}</div>
+                                <div style="font-size:0.9rem; color:#64748b;"><strong>逻辑：</strong>{cfg['logic']}</div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+
+                        # 显示所有状态概览（折叠）
+                        with st.expander("📖 查看完整状态集说明"):
+                            for state_id, state_cfg in state_configs.items():
+                                is_current = state_id == current_state
+                                border_style = f"border:2px solid {state_cfg['color']};" if is_current else "border:1px solid #e2e8f0;"
+                                st.markdown(
+                                    f"""
+                                    <div style="background:{state_cfg['bg']}; {border_style} padding:12px 16px; border-radius:6px; margin:8px 0;">
+                                        <div style="font-size:1rem; font-weight:600; color:{state_cfg['color']};">{state_cfg['name']} {'← 当前' if is_current else ''}</div>
+                                        <div style="font-size:0.85rem; color:#475569; margin-top:4px;"><strong>信号：</strong>{state_cfg['signal']}</div>
+                                        <div style="font-size:0.85rem; color:#475569;"><strong>持仓：</strong>{state_cfg['position']}</div>
+                                    </div>
+                                    """,
+                                    unsafe_allow_html=True,
+                                )
                 else:
                     # Keep legacy heuristic if metrics unavailable
                     ratio_series = (pivot_close["SOXX"] / pivot_close["QQQ"]).dropna()
