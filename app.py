@@ -20,7 +20,7 @@ from config import (
     TIME_RANGES,
 )
 from db_manager import fetch_macro, fetch_market_daily
-from utils import analyze_smh_qqq_rs, get_fear_and_greed, get_stock_data
+from utils import analyze_smh_qqq_rs, calculate_divergence_metrics, get_fear_and_greed, get_stock_data
 from premium_calculator import render_premium_dashboard
 
 DEBUG_LOG_PATH = "/Users/xiaoye/Projects/investing/.cursor/debug.log"
@@ -993,9 +993,12 @@ def main():
             # Info Section
             if etf_ticker in ETF_INFO:
                 info = ETF_INFO[etf_ticker]
+                # Convert markdown bold (**text**) to HTML <strong> tags
+                import re
+                desc_html = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', info['desc'])
                 st.markdown(f"""
                 <div style="background:var(--bg-paper); padding:1rem; border-radius:12px; border:1px solid var(--border-subtle); margin-bottom:1.5rem;">
-                    <div style="font-style:italic; margin-bottom:0.5rem;">{info['desc']}</div>
+                    <div style="font-style:italic; margin-bottom:0.5rem;">{desc_html}</div>
                     <div style="display:flex; gap:10px; font-size:0.9rem;">
                         <span style="background:#ecfdf5; color:#059669; padding:2px 8px; border-radius:6px; font-weight:600;">🎯 {info['strategy']}</span>
                     </div>
@@ -1066,30 +1069,111 @@ def main():
 
             # AI 产业链背离
             if "QQQ" in pivot_close and "SOXX" in pivot_close:
-                st.subheader("AI 基建背离 (QQQ vs SOXX/QQQ)")
+                st.subheader("QQQ Price vs SOXX Drawdown")
+                qqq_df = stock_data.get("QQQ")
+                soxx_df = stock_data.get("SOXX")
+
+                div_df = None
+                if qqq_df is not None and soxx_df is not None and (not qqq_df.empty) and (not soxx_df.empty):
+                    div_df = calculate_divergence_metrics(qqq_df, soxx_df, window=60)
+
+                # Fallback to ratio series if divergence metrics unavailable
                 qqq_series = pivot_close["QQQ"].dropna()
-                ratio_series = (pivot_close["SOXX"] / pivot_close["QQQ"]).dropna()
+                soxx_dd_series = None
+                if div_df is not None and (not div_df.empty) and "SOXX_DD" in div_df.columns:
+                    soxx_dd_series = div_df["SOXX_DD"].dropna()
                 fig1 = make_subplots(specs=[[{"secondary_y": True}]])
-                fig1.add_trace(go.Scatter(x=qqq_series.index, y=qqq_series, name="QQQ", line=dict(color="#3b82f6", width=2)), secondary_y=False)
-                fig1.add_trace(go.Scatter(x=ratio_series.index, y=ratio_series, name="SOXX/QQQ", fill="tozeroy",
-                                          line=dict(color="#ea580c"), opacity=0.1), secondary_y=True)
+                fig1.add_trace(go.Scatter(x=qqq_series.index, y=qqq_series, name="QQQ Price", line=dict(color="#3b82f6", width=2)), secondary_y=False)
+                if soxx_dd_series is not None and len(soxx_dd_series) > 0:
+                    fig1.add_trace(
+                        go.Scatter(
+                            x=soxx_dd_series.index,
+                            y=soxx_dd_series,
+                            name="SOXX Drawdown (60D)",
+                            fill="tozeroy",
+                            line=dict(color="#ea580c"),
+                            opacity=0.15,
+                        ),
+                        secondary_y=True,
+                    )
+                    # 警戒线：-7% 严重背离阈值
+                    fig1.add_hline(
+                        y=-0.07,
+                        line_dash="dash",
+                        line_color="#e11d48",
+                        line_width=1.5,
+                        annotation_text="⚠️ -7% 警戒线",
+                        annotation_position="bottom right",
+                        annotation_font_color="#e11d48",
+                        secondary_y=True,
+                    )
+                else:
+                    ratio_series = (pivot_close["SOXX"] / pivot_close["QQQ"]).dropna()
+                    fig1.add_trace(
+                        go.Scatter(
+                            x=ratio_series.index,
+                            y=ratio_series,
+                            name="SOXX/QQQ",
+                            fill="tozeroy",
+                            line=dict(color="#ea580c"),
+                            opacity=0.1,
+                        ),
+                        secondary_y=True,
+                    )
                 fig1.update_layout(
                     template="plotly_white", 
-                    height=360, 
-                    title="QQQ & SOXX/QQQ",
+                    height=400, 
+                    title="QQQ Price vs SOXX Drawdown (60D Rolling Max)",
                     paper_bgcolor="rgba(0,0,0,0)",
                     plot_bgcolor="rgba(0,0,0,0)",
                     font=dict(family="Lato, sans-serif", color="#64748b"),
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=1.02,
+                        xanchor="left",
+                        x=0
+                    ),
+                    margin=dict(r=80),
                 )
                 fig1.update_xaxes(gridcolor="#f1f5f9")
-                fig1.update_yaxes(gridcolor="#f1f5f9")
+                fig1.update_yaxes(gridcolor="#f1f5f9", secondary_y=False)
+                # 右侧 Y 轴格式化为百分比
+                fig1.update_yaxes(
+                    gridcolor="#f1f5f9",
+                    tickformat=".0%",
+                    title_text="SOXX Drawdown",
+                    secondary_y=True,
+                )
                 st.plotly_chart(fig1, use_container_width=True)
-                if len(qqq_series)>20 and len(ratio_series)>20 and qqq_series.iloc[-1]>qqq_series.iloc[-20:].max() and ratio_series.iloc[-1]<ratio_series.iloc[-20:].max():
+                if div_df is not None and (not div_df.empty):
+                    latest = div_df.iloc[-1]
+                    signal = latest.get("Divergence_Signal", "🟢 趋势健康")
+                    qqq_dd = latest.get("QQQ_DD")
+                    soxx_dd = latest.get("SOXX_DD")
+
+                    # Compact summary
+                    dd_text = ""
+                    try:
+                        if pd.notna(qqq_dd) and pd.notna(soxx_dd):
+                            dd_text = f"QQQ DD: {qqq_dd:.1%} | SOXX DD: {soxx_dd:.1%}"
+                    except Exception:
+                        dd_text = ""
+
                     render_insight_card(
-                        "硬件动能衰竭预警", 
-                        "QQQ 创出新高的同时，芯片股相对于 QQQ 的强度 (SOXX/QQQ) 却在走低。这通常意味着市场由少数权重股拉动，由于芯片是本轮 AI 硬件周期的核心，这种背离值得警惕。", 
-                        "warning"
+                        "背离信号 (60日回撤)",
+                        f"{signal}  {dd_text}",
+                        "warning" if "🔴" in str(signal) else ("info" if "🟠" in str(signal) else "info"),
                     )
+                else:
+                    # Keep legacy heuristic if metrics unavailable
+                    ratio_series = (pivot_close["SOXX"] / pivot_close["QQQ"]).dropna()
+                    if len(qqq_series) > 20 and len(ratio_series) > 20 and qqq_series.iloc[-1] > qqq_series.iloc[-20:].max() and ratio_series.iloc[-1] < ratio_series.iloc[-20:].max():
+                        render_insight_card(
+                            "硬件动能衰竭预警",
+                            "QQQ 创出新高的同时，芯片股相对于 QQQ 的强度 (SOXX/QQQ) 却在走低。这通常意味着市场由少数权重股拉动，由于芯片是本轮 AI 硬件周期的核心，这种背离值得警惕。",
+                            "warning",
+                        )
 
             # 聪明钱避险雷达
             if "XLP" in pivot_close and "XLY" in pivot_close:

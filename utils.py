@@ -235,3 +235,64 @@ def analyze_smh_qqq_rs(stock_data: Dict[str, pd.DataFrame]) -> Tuple[Optional[pd
         signal = "🔴 预警：硬件动能衰竭（顶背离风险）"
 
     return df, signal
+
+
+def calculate_divergence_metrics(
+    df_qqq: pd.DataFrame,
+    df_soxx: pd.DataFrame,
+    window: int = 60,
+) -> pd.DataFrame:
+    """Calculate QQQ vs SOXX drawdown-based divergence metrics.
+
+    Contract:
+    - Inputs: two DataFrames with a Date-like index and a "Close" column.
+    - Output: a DataFrame aligned on the common index with:
+        QQQ_Close, SOXX_Close,
+        QQQ_RollingMax, SOXX_RollingMax,
+        QQQ_DD, SOXX_DD,
+        Divergence_Signal
+
+    Rules:
+    - Rolling Max: past `window` rows (trading days) max of Close.
+    - Drawdown (DD): (Price - RollingMax) / RollingMax.
+    - Signal:
+        * QQQ_DD > -0.02 and SOXX_DD < -0.07 => "🔴 严重背离"
+        * QQQ_DD > -0.02 and SOXX_DD < -0.04 => "🟠 轻微背离"
+        * else => "🟢 趋势健康"
+    """
+
+    if df_qqq is None or df_soxx is None:
+        return pd.DataFrame()
+    if df_qqq.empty or df_soxx.empty:
+        return pd.DataFrame()
+    if "Close" not in df_qqq.columns or "Close" not in df_soxx.columns:
+        return pd.DataFrame()
+    if window <= 0:
+        raise ValueError("window must be a positive integer")
+
+    common_index = df_qqq.index.intersection(df_soxx.index)
+    if common_index.empty:
+        return pd.DataFrame()
+
+    out = pd.DataFrame(index=common_index)
+    out["QQQ_Close"] = pd.to_numeric(df_qqq.loc[common_index, "Close"], errors="coerce")
+    out["SOXX_Close"] = pd.to_numeric(df_soxx.loc[common_index, "Close"], errors="coerce")
+    out = out.dropna(subset=["QQQ_Close", "SOXX_Close"])
+    if out.empty:
+        return out
+
+    out["QQQ_RollingMax"] = out["QQQ_Close"].rolling(window=window, min_periods=1).max()
+    out["SOXX_RollingMax"] = out["SOXX_Close"].rolling(window=window, min_periods=1).max()
+
+    # Avoid division by zero
+    out["QQQ_DD"] = (out["QQQ_Close"] - out["QQQ_RollingMax"]) / out["QQQ_RollingMax"].replace(0, pd.NA)
+    out["SOXX_DD"] = (out["SOXX_Close"] - out["SOXX_RollingMax"]) / out["SOXX_RollingMax"].replace(0, pd.NA)
+
+    severe = (out["QQQ_DD"] > -0.02) & (out["SOXX_DD"] < -0.07)
+    mild = (out["QQQ_DD"] > -0.02) & (out["SOXX_DD"] < -0.04)
+
+    out["Divergence_Signal"] = "🟢 趋势健康"
+    out.loc[mild, "Divergence_Signal"] = "🟠 轻微背离"
+    out.loc[severe, "Divergence_Signal"] = "🔴 严重背离"
+
+    return out
