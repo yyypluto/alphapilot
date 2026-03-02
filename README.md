@@ -19,7 +19,23 @@ source venv/bin/activate  # macOS/Linux
 pip install -r requirements.txt
 ```
 
-### 2. 运行应用
+### 2. 配置 API Keys
+
+```bash
+# 复制配置模板
+cp .streamlit/secrets.toml.example .streamlit/secrets.toml
+
+# 编辑配置文件，填入你的 API Keys
+vim .streamlit/secrets.toml
+```
+
+**需要配置的 API Keys:**
+- `SUPABASE_URL` / `SUPABASE_KEY`: 数据库（可选）
+- `POLYGON_API_KEY`: 期权数据（**V7.0 新增**）
+  - 获取地址: https://polygon.io/dashboard/api-keys
+  - 免费账户: 每分钟 5 次调用
+
+### 3. 运行应用
 
 ```bash
 source venv/bin/activate
@@ -48,6 +64,19 @@ streamlit run app.py --server.port 8501 --server.headless true
 - K线 + MA20 (短期趋势) + MA200 (长期趋势)
 - RSI 走势图 + 30/70 阈值线
 
+### 🆕 模块 D: Option Alpha Lab (V7.0 新增)
+智能期权选筹模块，根据市场状态自动推荐最佳期权策略：
+
+| 市场状态 | 推荐策略 | 说明 |
+|---------|---------|------|
+| **State 0** (进攻) | 🚀 LEAPS Call | 深实值长期看涨期权，替代 QLD 获得杠杆敞口 |
+| **State 1** (防御) | 🛡️ 持有 QQQ | 降低杠杆，规避损耗 |
+| **State 2** (撤退) | 💰 Sell Put (CSP) | 卖出虚值看跌期权收租，等待抄底 |
+
+**核心筛选逻辑：**
+- LEAPS Call: Delta 0.80-0.90，到期 > 365 天，深实值
+- CSP: Delta -0.20~-0.30，到期 30-45 天，OTM 收租
+
 ---
 
 ## 📊 AlphaPilot 信号逻辑
@@ -73,8 +102,11 @@ streamlit run app.py --server.port 8501 --server.headless true
    - `⚪️ 正常定投` → 买入 $2000
    - `🟢 极佳买点` → 买入 $4000（动用储备）
    - `🟠 估值过高` → 买入 $1000 或暂停
-4. 在 Charles Schwab App 下单
-5. **不要频繁看盘**，去钻研自动驾驶算法 🚗
+4. **查看侧边栏 Option Alpha Lab** (V7.0 新功能)
+   - State 0 → 点击"扫描 LEAPS"获取替代 QLD 的期权
+   - State 2 → 点击"扫描 CSP"获取收租期权建议
+5. 在 Charles Schwab App 下单
+6. **不要频繁看盘**，去钻研自动驾驶算法 🚗
 
 ---
 
@@ -84,7 +116,8 @@ streamlit run app.py --server.port 8501 --server.headless true
 2. 访问 [share.streamlit.io](https://share.streamlit.io)
 3. 连接你的 GitHub 仓库
 4. 选择 `app.py` 作为入口文件
-5. 点击 Deploy！
+5. 在 Secrets 中配置 `POLYGON_API_KEY` 等
+6. 点击 Deploy！
 
 ---
 

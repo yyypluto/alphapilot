@@ -29,7 +29,8 @@ build/
 # Test files
 test_data.py
 
-
+*.png
+*.csv
 
 
 

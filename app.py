@@ -23,6 +23,7 @@ from db_manager import fetch_macro, fetch_market_daily
 from notifications import send_feishu_alert
 from utils import analyze_smh_qqq_rs, calculate_divergence_metrics, get_fear_and_greed, get_stock_data
 from premium_calculator import render_premium_dashboard
+from services.option_scanner import OptionScanner
 
 DEBUG_LOG_PATH = "/Users/xiaoye/Projects/investing/.cursor/debug.log"
 
@@ -590,6 +591,180 @@ def render_insight_card(title, content, type="warning"):
 
 
 # -----------------------------------------------------------------------------
+# Option Alpha Lab - 期权策略实验室
+# -----------------------------------------------------------------------------
+def render_option_alpha_lab(current_state: int = 0):
+    """
+    渲染期权策略实验室模块
+    
+    Args:
+        current_state: 当前市场状态 (0=Attack, 1=Defense, 2=Escape)
+    """
+    st.sidebar.markdown("---")
+    st.sidebar.header("🧪 Option Alpha Lab")
+    
+    # 状态感知提示
+    state_hints = {
+        0: ("🚀 建议策略: LEAPS Call", "进攻模式适合用深实值长期看涨期权替代 QLD", "#16a34a"),
+        1: ("🛡️ 建议策略: 持有 QQQ", "防御模式，不建议额外期权操作", "#ea580c"),
+        2: ("💰 建议策略: Sell Put (CSP)", "撤退模式适合卖 Put 收租等抄底", "#dc2626"),
+    }
+    
+    hint_text, hint_desc, hint_color = state_hints.get(current_state, state_hints[0])
+    
+    st.sidebar.markdown(f"""
+    <div style="background:linear-gradient(135deg, {hint_color}15, {hint_color}05); 
+                padding:12px; border-radius:10px; border-left:3px solid {hint_color}; margin-bottom:12px;">
+        <div style="font-weight:600; color:{hint_color}; font-size:0.95rem;">{hint_text}</div>
+        <div style="font-size:0.8rem; color:#64748b; margin-top:4px;">{hint_desc}</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # 标的选择
+    ticker = st.sidebar.selectbox(
+        "选择标的",
+        ["QQQ", "SPY", "IWM"],
+        index=0,
+        key="option_scanner_ticker"
+    )
+    
+    # 扫描按钮
+    col1, col2 = st.sidebar.columns(2)
+    
+    with col1:
+        scan_leaps = st.button("🚀 扫描 LEAPS", key="scan_leaps_btn", use_container_width=True)
+    with col2:
+        scan_csp = st.button("💰 扫描 CSP", key="scan_csp_btn", use_container_width=True)
+    
+    # 处理扫描请求
+    if scan_leaps or scan_csp:
+        try:
+            scanner = OptionScanner(ticker=ticker)
+            
+            # API 状态检查
+            if not scanner.is_available():
+                st.sidebar.warning("⚠️ Polygon API 未配置，使用模拟数据演示")
+            
+            with st.sidebar:
+                with st.spinner("正在扫描期权链..."):
+                    if scan_leaps:
+                        result = scanner.scan_leaps_call()
+                        _render_leaps_result(result)
+                    else:
+                        result = scanner.scan_cash_secured_put()
+                        _render_csp_result(result)
+                        
+        except Exception as e:
+            st.sidebar.error(f"❌ 扫描失败: {str(e)}")
+            st.sidebar.caption("请检查 POLYGON_API_KEY 配置")
+
+
+def _render_leaps_result(result: dict):
+    """渲染 LEAPS Call 扫描结果"""
+    if result is None or result.get('error'):
+        st.sidebar.error(result.get('message', '扫描失败') if result else '扫描失败')
+        return
+    
+    # 警告提示
+    if result.get('warning'):
+        st.sidebar.warning(result['warning'])
+    
+    # Mock 数据提示
+    if result.get('is_mock'):
+        st.sidebar.caption("📊 模拟数据（请配置 API Key 获取实时数据）")
+    
+    # 合约卡片
+    st.sidebar.markdown(f"""
+    <div style="background:linear-gradient(135deg, #f0fdf4, #ecfdf5); 
+                padding:16px; border-radius:12px; border:1px solid #bbf7d0; margin:8px 0;">
+        <div style="font-size:0.75rem; color:#16a34a; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">
+            🚀 LEAPS CALL
+        </div>
+        <div style="font-family:'Source Code Pro',monospace; font-size:1.1rem; font-weight:700; color:#1f2937; margin:8px 0;">
+            {result.get('ticker', 'N/A')}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # 关键指标
+    col1, col2 = st.sidebar.columns(2)
+    with col1:
+        st.metric("行权价", f"${result.get('strike', 0):.0f}")
+        st.metric("Delta", f"{result.get('delta', 0):.2f}")
+    with col2:
+        st.metric("杠杆率", f"{result.get('leverage', 0):.1f}x")
+        st.metric("溢价率", f"{result.get('premium_rate', 0):.1%}")
+    
+    st.sidebar.metric("剩余天数", f"{result.get('days_to_expiry', 0)} 天")
+    st.sidebar.metric("期权价格", f"${result.get('last_price', 0):.2f}")
+    
+    # 操作建议
+    recommendation = result.get('recommendation', '')
+    if recommendation:
+        st.sidebar.markdown(f"""
+        <div style="background:#fffbeb; padding:12px; border-radius:8px; 
+                    border-left:3px solid #f59e0b; margin-top:12px; font-size:0.85rem; color:#92400e;">
+            {recommendation}
+        </div>
+        """, unsafe_allow_html=True)
+
+
+def _render_csp_result(result: dict):
+    """渲染 Cash-Secured Put 扫描结果"""
+    if result is None or result.get('error'):
+        st.sidebar.error(result.get('message', '扫描失败') if result else '扫描失败')
+        return
+    
+    # 警告提示
+    if result.get('warning'):
+        st.sidebar.warning(result['warning'])
+    
+    # Mock 数据提示
+    if result.get('is_mock'):
+        st.sidebar.caption("📊 模拟数据（请配置 API Key 获取实时数据）")
+    
+    # 合约卡片
+    st.sidebar.markdown(f"""
+    <div style="background:linear-gradient(135deg, #fef2f2, #fff1f2); 
+                padding:16px; border-radius:12px; border:1px solid #fecaca; margin:8px 0;">
+        <div style="font-size:0.75rem; color:#dc2626; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">
+            💰 CASH-SECURED PUT
+        </div>
+        <div style="font-family:'Source Code Pro',monospace; font-size:1.1rem; font-weight:700; color:#1f2937; margin:8px 0;">
+            {result.get('ticker', 'N/A')}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # 关键指标
+    col1, col2 = st.sidebar.columns(2)
+    with col1:
+        st.metric("行权价", f"${result.get('strike', 0):.0f}")
+        st.metric("Delta", f"{result.get('delta', 0):.2f}")
+    with col2:
+        st.metric("权利金", f"${result.get('premium', 0):.0f}")
+        st.metric("年化收益", f"{result.get('annualized_return', 0):.1%}")
+    
+    col3, col4 = st.sidebar.columns(2)
+    with col3:
+        st.metric("盈利概率", f"{result.get('prob_profit', 0):.0%}")
+    with col4:
+        st.metric("下跌缓冲", f"{result.get('downside_buffer', 0):.1%}")
+    
+    st.sidebar.metric("剩余天数", f"{result.get('days_to_expiry', 0)} 天")
+    
+    # 操作建议
+    recommendation = result.get('recommendation', '')
+    if recommendation:
+        st.sidebar.markdown(f"""
+        <div style="background:#eff6ff; padding:12px; border-radius:8px; 
+                    border-left:3px solid #3b82f6; margin-top:12px; font-size:0.85rem; color:#1e40af;">
+            {recommendation}
+        </div>
+        """, unsafe_allow_html=True)
+
+
+# -----------------------------------------------------------------------------
 # Helpers
 # -----------------------------------------------------------------------------
 def analyze_signal(row):
@@ -818,6 +993,55 @@ def main():
     if not stock_data:
         st.error("无法获取数据（数据库缺失且 API 失败）。")
         return
+
+    # -------------------------------------------------------------------------
+    # 计算当前市场状态 (用于 Option Alpha Lab)
+    # -------------------------------------------------------------------------
+    def _calculate_market_state(stock_data: dict, pivot_close) -> int:
+        """
+        计算当前市场状态
+        0 = Attack (进攻), 1 = Defense (防御), 2 = Escape (撤退)
+        """
+        try:
+            qqq_df = stock_data.get("QQQ")
+            soxx_df = stock_data.get("SOXX")
+            
+            if qqq_df is None or soxx_df is None or qqq_df.empty or soxx_df.empty:
+                return 0  # 默认进攻模式
+            
+            # 计算背离指标
+            div_df = calculate_divergence_metrics(qqq_df, soxx_df, window=60)
+            if div_df is None or div_df.empty:
+                return 0
+            
+            latest = div_df.iloc[-1]
+            signal = latest.get("Divergence_Signal", "🟢 趋势健康")
+            
+            # 检查股债双杀风险
+            bonds_crash_risk = False
+            if pivot_close is not None and "TLT" in pivot_close.columns and "QQQ" in pivot_close.columns:
+                df_corr = pivot_close[["TLT", "QQQ"]].dropna().tail(60)
+                if len(df_corr) >= 20:
+                    corr_tlt_qqq = df_corr["TLT"].pct_change().corr(df_corr["QQQ"].pct_change())
+                    tlt_dd_20 = df_corr["TLT"].iloc[-1] / df_corr["TLT"].rolling(20, min_periods=5).max().iloc[-1] - 1
+                    if pd.notna(corr_tlt_qqq) and pd.notna(tlt_dd_20):
+                        bonds_crash_risk = (corr_tlt_qqq > 0) and (tlt_dd_20 < -0.05)
+            
+            # 状态判断
+            if ("🔴" in str(signal)) or bonds_crash_risk:
+                return 2  # Escape Mode
+            elif "🟠" in str(signal):
+                return 1  # Defense Mode
+            else:
+                return 0  # Attack Mode
+                
+        except Exception:
+            return 0  # 默认进攻模式
+    
+    current_market_state = _calculate_market_state(stock_data, pivot_close)
+    
+    # 渲染 Option Alpha Lab (侧边栏)
+    render_option_alpha_lab(current_market_state)
 
     # Macro Dashboard
     st.subheader("📡 宏观天眼 (Macro Environment)")
