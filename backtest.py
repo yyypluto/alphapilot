@@ -1,3 +1,21 @@
+"""
+⚠️ DEPRECATED — This standalone script has been superseded by the unified
+backtesting framework. The V6 Hydra strategy is now available as:
+
+    python -m backtesting.runner --strategy hydra_v6 --years 10
+
+Or interactively via the Streamlit dashboard's "📈 回测实验室" tab.
+
+See: backtesting/strategies/hydra_v6.py
+"""
+
+import warnings
+warnings.warn(
+    "backtest.py is deprecated. Use 'python -m backtesting.runner --strategy hydra_v6' instead.",
+    DeprecationWarning,
+    stacklevel=1,
+)
+
 import time
 import datetime as dt
 

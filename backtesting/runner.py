@@ -31,7 +31,7 @@ STRATEGIES = {
         "name": "PMCC (LEAPS Diagonal)",
         "ticker": "QQQ",
         "tickers_needed": ["QQQ"],
-        "iv_scale": 1.15,  # QQQ is slightly higher vol than SPX
+        "iv_scale": 1.15,
     },
     "put_credit_spread": {
         "name": "Put Credit Spread",
@@ -43,7 +43,25 @@ STRATEGIES = {
         "name": "Wheel (SCHG)",
         "ticker": "SCHG",
         "tickers_needed": ["SCHG"],
-        "iv_scale": 1.20,  # SCHG is a growth ETF, slightly higher beta
+        "iv_scale": 1.20,
+    },
+    "hydra_pmcc": {
+        "name": "Hydra(Simple) + PMCC",
+        "ticker": "QQQ",
+        "tickers_needed": ["QQQ", "GLD"],
+        "iv_scale": 1.15,
+    },
+    "hydra_pmcc_soxx": {
+        "name": "Hydra(SOXX) + PMCC",
+        "ticker": "QQQ",
+        "tickers_needed": ["QQQ", "GLD", "SOXX"],
+        "iv_scale": 1.15,
+    },
+    "hydra_v6": {
+        "name": "Hydra V6 ETF Rotation",
+        "ticker": "QQQ",
+        "tickers_needed": ["QQQ", "QLD", "GLD", "SOXX"],
+        "iv_scale": 1.0,
     },
 }
 
@@ -59,6 +77,15 @@ def _create_strategy(name: str):
     elif name == "wheel":
         from backtesting.strategies.wheel import WheelStrategy
         return WheelStrategy(ticker="SCHG")
+    elif name == "hydra_pmcc":
+        from backtesting.strategies.hydra_pmcc import HydraPMCCStrategy
+        return HydraPMCCStrategy(ticker="QQQ", state_mode="simple")
+    elif name == "hydra_pmcc_soxx":
+        from backtesting.strategies.hydra_pmcc import HydraPMCCStrategy
+        return HydraPMCCStrategy(ticker="QQQ", state_mode="soxx")
+    elif name == "hydra_v6":
+        from backtesting.strategies.hydra_v6 import HydraV6Strategy
+        return HydraV6Strategy(ticker="QQQ")
     else:
         raise ValueError(f"Unknown strategy: {name}")
 

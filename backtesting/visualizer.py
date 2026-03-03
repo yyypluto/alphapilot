@@ -18,6 +18,13 @@ try:
 except ImportError:
     HAS_MPL = False
 
+try:
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+    HAS_PLOTLY = True
+except ImportError:
+    HAS_PLOTLY = False
+
 from backtesting.metrics import max_drawdown, monthly_returns
 
 OUTPUT_DIR = Path(__file__).parent / "output"
@@ -195,3 +202,132 @@ def print_comparison_table(
             cells.append(v.rjust(w))
         print("|" + "|".join(cells) + "|")
     print(sep)
+
+
+# ─────────────────────────────────────────────────────────
+# Plotly Charts (for Streamlit / Web frontend)
+# ─────────────────────────────────────────────────────────
+
+PLOTLY_COLORS = ["#7c3aed", "#ef4444", "#f59e0b", "#10b981", "#3b82f6", "#8b5cf6"]
+
+
+def plotly_equity_chart(
+    curves: Dict[str, pd.Series],
+    title: str = "Strategy Comparison",
+    log_scale: bool = True,
+):
+    """
+    Create a Plotly figure with equity curves + drawdown subplot.
+
+    Returns a plotly.graph_objects.Figure (can be passed to st.plotly_chart).
+    """
+    if not HAS_PLOTLY:
+        return None
+
+    fig = make_subplots(
+        rows=2, cols=1, shared_xaxes=True,
+        vertical_spacing=0.08,
+        row_heights=[0.7, 0.3],
+        subplot_titles=("Portfolio Value ($)", "Drawdown (%)"),
+    )
+
+    for i, (name, curve) in enumerate(curves.items()):
+        color = PLOTLY_COLORS[i % len(PLOTLY_COLORS)]
+        lw = 2.5 if i == 0 else 1.5
+
+        # Equity curve
+        fig.add_trace(
+            go.Scatter(
+                x=curve.index, y=curve.values,
+                name=name, line=dict(color=color, width=lw),
+                hovertemplate=f"<b>{name}</b><br>%{{x|%Y-%m-%d}}<br>${{y:,.0f}}<extra></extra>",
+            ),
+            row=1, col=1,
+        )
+
+        # Drawdown
+        _, dd = max_drawdown(curve)
+        fig.add_trace(
+            go.Scatter(
+                x=dd.index, y=dd.values * 100,
+                name=f"{name} DD", line=dict(color=color, width=1),
+                showlegend=False,
+                hovertemplate=f"<b>{name}</b><br>%{{x|%Y-%m-%d}}<br>%{{y:.1f}}%<extra></extra>",
+            ),
+            row=2, col=1,
+        )
+        if i == 0:
+            fig.add_trace(
+                go.Scatter(
+                    x=dd.index, y=dd.values * 100,
+                    fill="tozeroy", fillcolor=f"rgba(124, 58, 237, 0.1)",
+                    line=dict(width=0), showlegend=False,
+                    hoverinfo="skip",
+                ),
+                row=2, col=1,
+            )
+
+    fig.update_layout(
+        title=title,
+        template="plotly_white",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="Lato, sans-serif", color="#64748b"),
+        height=650,
+        legend=dict(orientation="h", y=1.02, x=0.5, xanchor="center"),
+        margin=dict(l=10, r=10, t=60, b=10),
+        hovermode="x unified",
+    )
+
+    if log_scale:
+        fig.update_yaxes(type="log", row=1, col=1)
+    fig.update_xaxes(gridcolor="#f1f5f9", linecolor="#e2e8f0")
+    fig.update_yaxes(gridcolor="#f1f5f9", linecolor="#e2e8f0")
+
+    return fig
+
+
+def plotly_monthly_heatmap(
+    equity: pd.Series,
+    strategy_name: str = "Strategy",
+):
+    """
+    Create a Plotly heatmap of monthly returns.
+
+    Returns a plotly.graph_objects.Figure.
+    """
+    if not HAS_PLOTLY:
+        return None
+
+    monthly = monthly_returns(equity)
+    if monthly.empty:
+        return None
+
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=monthly.values,
+            x=monthly.columns.tolist(),
+            y=[str(y) for y in monthly.index.tolist()],
+            colorscale="RdYlGn",
+            zmid=0,
+            text=[[f"{v:.1f}%" for v in row] for row in monthly.values],
+            texttemplate="%{text}",
+            textfont={"size": 10},
+            hovertemplate="%{y} %{x}<br>%{z:.1f}%<extra></extra>",
+            colorbar=dict(title="Return %"),
+        )
+    )
+
+    fig.update_layout(
+        title=f"{strategy_name} — Monthly Returns (%)",
+        template="plotly_white",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="Lato, sans-serif", color="#64748b"),
+        height=max(300, len(monthly) * 35 + 100),
+        margin=dict(l=10, r=10, t=50, b=10),
+        yaxis=dict(autorange="reversed"),
+    )
+
+    return fig
+

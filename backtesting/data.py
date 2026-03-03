@@ -15,7 +15,7 @@ import yfinance as yf
 CACHE_DIR = Path(__file__).parent / "cache"
 CACHE_DIR.mkdir(exist_ok=True)
 
-DEFAULT_TICKERS = ["QQQ", "SCHG"]
+DEFAULT_TICKERS = ["QQQ", "SCHG", "QLD", "GLD", "SOXX"]
 VIX_TICKER = "^VIX"
 RFR_TICKER = "^IRX"  # 13-week T-bill yield
 
