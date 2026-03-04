@@ -1597,6 +1597,19 @@ def main():
     # ═══════════════════════════════════════════════════════════════
     # 回测实验室 (Backtest Lab)
     # ═══════════════════════════════════════════════════════════════
+    def _fmt_pct(v, dec=1):
+        """Format percentage compactly: 159.6% / 4,544.5% / 12,345%"""
+        pct = v * 100
+        if abs(pct) >= 1000:
+            return f"{pct:,.0f}%"
+        return f"{pct:.{dec}f}%"
+
+    def _fmt_ratio(v, dec=2):
+        """Format ratio compactly: 0.77 / 12.3"""
+        if abs(v) >= 100:
+            return f"{v:,.0f}"
+        return f"{v:.{dec}f}"
+
     with tab4:
         st.subheader("📈 回测实验室 (Backtest Lab)")
         st.caption("在经典策略之间一键回测、对比、洞察 · 所有结果自动存入本地数据库")
@@ -1767,20 +1780,20 @@ def main():
 
                         # ── Metrics Cards ──
                         m1, m2, m3, m4, m5, m6 = st.columns(6)
-                        m1.metric("总回报", f"{metrics['total_return']*100:.1f}%")
-                        m2.metric("年化收益", f"{metrics['cagr']*100:.1f}%")
-                        m3.metric("最大回撤", f"{metrics['max_drawdown']*100:.1f}%")
-                        m4.metric("夏普比率", f"{metrics['sharpe_ratio']:.2f}")
-                        m5.metric("索提诺比率", f"{metrics['sortino_ratio']:.2f}")
-                        m6.metric("卡尔玛比率", f"{metrics['calmar_ratio']:.2f}")
+                        m1.metric("总回报", _fmt_pct(metrics['total_return']))
+                        m2.metric("年化收益", _fmt_pct(metrics['cagr']))
+                        m3.metric("最大回撤", _fmt_pct(metrics['max_drawdown']))
+                        m4.metric("夏普比率", _fmt_ratio(metrics['sharpe_ratio']))
+                        m5.metric("索提诺比率", _fmt_ratio(metrics['sortino_ratio']))
+                        m6.metric("卡尔玛比率", _fmt_ratio(metrics['calmar_ratio']))
 
                         # ── Benchmark Comparison ──
                         if "benchmark_cagr" in metrics:
                             b1, b2, b3, b4 = st.columns(4)
-                            b1.metric(f"基准 ({bench_ticker}) 总回报", f"{metrics.get('benchmark_total_return', 0)*100:.1f}%")
-                            b2.metric(f"基准年化", f"{metrics.get('benchmark_cagr', 0)*100:.1f}%")
-                            b3.metric(f"基准最大回撤", f"{metrics.get('benchmark_max_drawdown', 0)*100:.1f}%")
-                            b4.metric(f"基准夏普", f"{metrics.get('benchmark_sharpe', 0):.2f}")
+                            b1.metric(f"基准 ({bench_ticker}) 总回报", _fmt_pct(metrics.get('benchmark_total_return', 0)))
+                            b2.metric(f"基准年化", _fmt_pct(metrics.get('benchmark_cagr', 0)))
+                            b3.metric(f"基准最大回撤", _fmt_pct(metrics.get('benchmark_max_drawdown', 0)))
+                            b4.metric(f"基准夏普", _fmt_ratio(metrics.get('benchmark_sharpe', 0)))
 
                         # ── Equity Chart ──
                         curves = {
@@ -1825,8 +1838,8 @@ def main():
                         if "win_rate" in metrics:
                             st.divider()
                             t1, t2, t3 = st.columns(3)
-                            t1.metric("胜率", f"{metrics['win_rate']*100:.1f}%")
-                            t2.metric("盈亏比", f"{metrics.get('profit_factor', 0):.2f}")
+                            t1.metric("胜率", _fmt_pct(metrics['win_rate']))
+                            t2.metric("盈亏比", _fmt_ratio(metrics.get('profit_factor', 0)))
                             t3.metric("总交易数", f"{metrics.get('total_trades', 0)}")
 
                     except Exception as e:
@@ -1861,10 +1874,10 @@ def main():
                             "策略": r.strategy_name,
                             "年数": r.years,
                             "初始资金": f"${r.initial_cash:,.0f}",
-                            "总回报": f"{r.total_return*100:.1f}%" if r.total_return else "-",
-                            "年化": f"{r.cagr*100:.1f}%" if r.cagr else "-",
-                            "最大回撤": f"{r.max_drawdown*100:.1f}%" if r.max_drawdown else "-",
-                            "夏普": f"{r.sharpe_ratio:.2f}" if r.sharpe_ratio else "-",
+                            "总回报": _fmt_pct(r.total_return) if r.total_return else "-",
+                            "年化": _fmt_pct(r.cagr) if r.cagr else "-",
+                            "最大回撤": _fmt_pct(r.max_drawdown) if r.max_drawdown else "-",
+                            "夏普": _fmt_ratio(r.sharpe_ratio) if r.sharpe_ratio else "-",
                             "数据范围": f"{r.data_start} → {r.data_end}",
                         })
 
@@ -1906,20 +1919,20 @@ def main():
 
                             # Metrics cards
                             m1, m2, m3, m4, m5, m6 = st.columns(6)
-                            m1.metric("总回报", f"{loaded_metrics.get('total_return', 0)*100:.1f}%")
-                            m2.metric("年化收益", f"{loaded_metrics.get('cagr', 0)*100:.1f}%")
-                            m3.metric("最大回撤", f"{loaded_metrics.get('max_drawdown', 0)*100:.1f}%")
-                            m4.metric("夏普比率", f"{loaded_metrics.get('sharpe_ratio', 0):.2f}")
-                            m5.metric("索提诺比率", f"{loaded_metrics.get('sortino_ratio', 0):.2f}")
-                            m6.metric("卡尔玛比率", f"{loaded_metrics.get('calmar_ratio', 0):.2f}")
+                            m1.metric("总回报", _fmt_pct(loaded_metrics.get('total_return', 0)))
+                            m2.metric("年化收益", _fmt_pct(loaded_metrics.get('cagr', 0)))
+                            m3.metric("最大回撤", _fmt_pct(loaded_metrics.get('max_drawdown', 0)))
+                            m4.metric("夏普比率", _fmt_ratio(loaded_metrics.get('sharpe_ratio', 0)))
+                            m5.metric("索提诺比率", _fmt_ratio(loaded_metrics.get('sortino_ratio', 0)))
+                            m6.metric("卡尔玛比率", _fmt_ratio(loaded_metrics.get('calmar_ratio', 0)))
 
                             # Benchmark comparison
                             if loaded_metrics.get("benchmark_cagr"):
                                 b1, b2, b3, b4 = st.columns(4)
-                                b1.metric("基准总回报", f"{loaded_metrics.get('benchmark_total_return', 0)*100:.1f}%")
-                                b2.metric("基准年化", f"{loaded_metrics.get('benchmark_cagr', 0)*100:.1f}%")
-                                b3.metric("基准最大回撤", f"{loaded_metrics.get('benchmark_max_drawdown', 0)*100:.1f}%")
-                                b4.metric("基准夏普", f"{loaded_metrics.get('benchmark_sharpe', 0):.2f}")
+                                b1.metric("基准总回报", _fmt_pct(loaded_metrics.get('benchmark_total_return', 0)))
+                                b2.metric("基准年化", _fmt_pct(loaded_metrics.get('benchmark_cagr', 0)))
+                                b3.metric("基准最大回撤", _fmt_pct(loaded_metrics.get('benchmark_max_drawdown', 0)))
+                                b4.metric("基准夏普", _fmt_ratio(loaded_metrics.get('benchmark_sharpe', 0)))
 
                             # Equity curve from JSON
                             if loaded_equity:
@@ -1940,19 +1953,30 @@ def main():
                                 if fig:
                                     st.plotly_chart(fig, use_container_width=True)
 
-                            # Trades table
-                            if loaded_trades:
-                                st.markdown("#### 📋 交易记录")
-                                trade_df = pd.DataFrame(loaded_trades)
-                                trade_df.columns = [c.replace("date", "日期").replace("ticker", "标的").replace("action", "操作").replace("quantity", "数量").replace("price", "价格").replace("pnl", "盈亏") for c in trade_df.columns]
-                                st.dataframe(trade_df, height=400, hide_index=True)
+                            # Trades table + Heatmap side by side
+                            col_trades, col_heatmap = st.columns(2)
+
+                            with col_trades:
+                                if loaded_trades:
+                                    st.markdown("#### 📋 交易记录")
+                                    trade_df = pd.DataFrame(loaded_trades)
+                                    trade_df.columns = [c.replace("date", "日期").replace("ticker", "标的").replace("action", "操作").replace("quantity", "数量").replace("price", "价格").replace("pnl", "盈亏") for c in trade_df.columns]
+                                    st.dataframe(trade_df, height=400, hide_index=True)
+
+                            with col_heatmap:
+                                if loaded_equity:
+                                    st.markdown("#### 📊 月度收益热力图")
+                                    from backtesting.visualizer import plotly_monthly_heatmap
+                                    heatmap_fig = plotly_monthly_heatmap(eq_series, rec.strategy_name)
+                                    if heatmap_fig:
+                                        st.plotly_chart(heatmap_fig, use_container_width=True)
 
                             # Win rate
                             if loaded_metrics.get("win_rate"):
                                 st.divider()
                                 t1, t2, t3 = st.columns(3)
-                                t1.metric("胜率", f"{loaded_metrics['win_rate']*100:.1f}%")
-                                t2.metric("盈亏比", f"{loaded_metrics.get('profit_factor', 0):.2f}")
+                                t1.metric("胜率", _fmt_pct(loaded_metrics['win_rate']))
+                                t2.metric("盈亏比", _fmt_ratio(loaded_metrics.get('profit_factor', 0)))
                                 t3.metric("总交易数", f"{loaded_metrics.get('total_trades', 0)}")
 
             except Exception as e:
