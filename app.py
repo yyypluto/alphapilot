@@ -1599,7 +1599,7 @@ def main():
     # ═══════════════════════════════════════════════════════════════
     with tab4:
         st.subheader("📈 回测实验室 (Backtest Lab)")
-        st.caption("在经典策略之间一键回测、对比、洞察")
+        st.caption("在经典策略之间一键回测、对比、洞察 · 所有结果自动存入本地数据库")
 
         # Strategy registry (mirrored from backtesting/runner.py)
         BT_STRATEGIES = {
@@ -1635,161 +1635,330 @@ def main():
             },
         }
 
-        # ── Controls Row ──
-        col_strat, col_years, col_cash = st.columns([3, 1, 1])
+        # ── Sub-tabs: Run / History ──
+        bt_sub_run, bt_sub_history = st.tabs(["🚀 运行回测", "📋 历史记录"])
 
-        with col_strat:
-            strategy_keys = list(BT_STRATEGIES.keys())
-            strategy_names = [BT_STRATEGIES[k]["name"] for k in strategy_keys]
-            selected_idx = st.selectbox(
-                "选择策略",
-                range(len(strategy_keys)),
-                format_func=lambda i: strategy_names[i],
-                key="bt_strategy_select",
-            )
-            selected_strategy = strategy_keys[selected_idx]
+        # ================================================================
+        # SUB-TAB 1: Run Backtest
+        # ================================================================
+        with bt_sub_run:
+            # ── Controls Row ──
+            col_strat, col_years, col_cash = st.columns([3, 1, 1])
 
-        with col_years:
-            bt_years = st.selectbox("回测年数", [3, 5, 10, 15, 20], index=1, key="bt_years")
+            with col_strat:
+                strategy_keys = list(BT_STRATEGIES.keys())
+                strategy_names = [BT_STRATEGIES[k]["name"] for k in strategy_keys]
+                selected_idx = st.selectbox(
+                    "选择策略",
+                    range(len(strategy_keys)),
+                    format_func=lambda i: strategy_names[i],
+                    key="bt_strategy_select",
+                )
+                selected_strategy = strategy_keys[selected_idx]
 
-        with col_cash:
-            bt_cash = st.number_input("初始资金 ($)", value=100_000, step=10_000, min_value=10_000, key="bt_cash")
+            with col_years:
+                bt_years = st.selectbox("回测年数", [3, 5, 10, 15, 20], index=1, key="bt_years")
 
-        # Strategy description
-        info = BT_STRATEGIES[selected_strategy]
-        st.markdown(f"""
-        <div style="background: var(--bg-card, #fff); padding: 0.8rem 1.2rem; border-radius: 12px;
-                    border-left: 4px solid #7c3aed; margin: 0.5rem 0 1rem 0;
-                    box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-            <strong style="color: #7c3aed;">{info['name']}</strong><br>
-            <span style="color: #64748b; font-size: 0.9rem;">{info['desc']}</span><br>
-            <span style="font-size: 0.8rem; color: #94a3b8;">标的: {', '.join(info['tickers'])}</span>
-        </div>
-        """, unsafe_allow_html=True)
+            with col_cash:
+                bt_cash = st.number_input("初始资金 ($)", value=100_000, step=10_000, min_value=10_000, key="bt_cash")
 
-        # ── Run Button ──
-        run_clicked = st.button("🚀 运行回测", type="primary", use_container_width=True, key="bt_run")
+            # Strategy description
+            info = BT_STRATEGIES[selected_strategy]
+            st.markdown(f"""
+            <div style="background: var(--bg-card, #fff); padding: 0.8rem 1.2rem; border-radius: 12px;
+                        border-left: 4px solid #7c3aed; margin: 0.5rem 0 1rem 0;
+                        box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <strong style="color: #7c3aed;">{info['name']}</strong><br>
+                <span style="color: #64748b; font-size: 0.9rem;">{info['desc']}</span><br>
+                <span style="font-size: 0.8rem; color: #94a3b8;">标的: {', '.join(info['tickers'])}</span>
+            </div>
+            """, unsafe_allow_html=True)
 
-        if run_clicked:
-            with st.spinner("⏳ 正在下载数据并运行回测..."):
-                try:
-                    from backtesting.data import fetch_backtest_data
-                    from backtesting.engine import BacktestEngine, Portfolio
-                    from backtesting.metrics import compute_metrics
-                    from backtesting.visualizer import plotly_equity_chart, plotly_monthly_heatmap
+            # ── Run Button ──
+            run_clicked = st.button("🚀 运行回测", type="primary", use_container_width=True, key="bt_run")
 
-                    # Import strategy factory
-                    from backtesting.runner import _create_strategy, _create_benchmark, STRATEGIES as RUNNER_STRATEGIES
+            if run_clicked:
+                with st.spinner("⏳ 正在下载数据并运行回测..."):
+                    try:
+                        import json as _json
+                        import uuid as _uuid
+                        import datetime as _dt
+                        from backtesting.data import fetch_backtest_data
+                        from backtesting.engine import BacktestEngine, Portfolio
+                        from backtesting.metrics import compute_metrics
+                        from backtesting.visualizer import plotly_equity_chart, plotly_monthly_heatmap
+                        from backtesting.runner import _create_strategy, _create_benchmark, STRATEGIES as RUNNER_STRATEGIES
+                        from backtesting.db import init_db, SessionLocal, BacktestHistory
 
-                    config = RUNNER_STRATEGIES[selected_strategy]
-                    all_tickers = sorted(set(config["tickers_needed"]))
+                        config = RUNNER_STRATEGIES[selected_strategy]
+                        all_tickers = sorted(set(config["tickers_needed"]))
 
-                    # Fetch data
-                    data = fetch_backtest_data(
-                        tickers=all_tickers,
-                        years=bt_years,
-                        cache_name=f"bt_{selected_strategy}",
-                    )
+                        # Fetch data
+                        data = fetch_backtest_data(
+                            tickers=all_tickers,
+                            years=bt_years,
+                            cache_name=f"bt_{selected_strategy}",
+                        )
 
-                    # Run strategy
-                    strategy = _create_strategy(selected_strategy)
-                    engine = BacktestEngine(
-                        data=data,
-                        strategy=strategy,
-                        initial_cash=float(bt_cash),
-                        iv_scale=config.get("iv_scale", 1.0),
-                    )
-                    portfolio = engine.run()
-                    equity = portfolio.get_equity_curve()
+                        # Run strategy
+                        strategy = _create_strategy(selected_strategy)
+                        engine = BacktestEngine(
+                            data=data,
+                            strategy=strategy,
+                            initial_cash=float(bt_cash),
+                            iv_scale=config.get("iv_scale", 1.0),
+                        )
+                        portfolio = engine.run()
+                        equity = portfolio.get_equity_curve()
 
-                    # Run benchmark (Buy & Hold)
-                    bench_ticker = config["ticker"]
-                    bench_strategy = _create_benchmark(bench_ticker)
-                    bench_engine = BacktestEngine(
-                        data=data,
-                        strategy=bench_strategy,
-                        initial_cash=float(bt_cash),
-                        iv_scale=config.get("iv_scale", 1.0),
-                    )
-                    bench_portfolio = bench_engine.run()
-                    bench_equity = bench_portfolio.get_equity_curve()
+                        # Run benchmark (Buy & Hold)
+                        bench_ticker = config["ticker"]
+                        bench_strategy = _create_benchmark(bench_ticker)
+                        bench_engine = BacktestEngine(
+                            data=data,
+                            strategy=bench_strategy,
+                            initial_cash=float(bt_cash),
+                            iv_scale=config.get("iv_scale", 1.0),
+                        )
+                        bench_portfolio = bench_engine.run()
+                        bench_equity = bench_portfolio.get_equity_curve()
 
-                    # Compute metrics
-                    avg_rfr = data["RFR"].mean() if "RFR" in data.columns else 0.04
-                    metrics = compute_metrics(
-                        equity, trades=portfolio.trades, rfr=avg_rfr, benchmark=bench_equity
-                    )
+                        # Compute metrics
+                        avg_rfr = data["RFR"].mean() if "RFR" in data.columns else 0.04
+                        metrics = compute_metrics(
+                            equity, trades=portfolio.trades, rfr=avg_rfr, benchmark=bench_equity
+                        )
 
-                    st.success(f"✅ 回测完成！数据范围: {data.index.min().date()} → {data.index.max().date()} ({len(data)} 交易日)")
+                        # ── Save to SQLite ──
+                        try:
+                            init_db()
+                            db = SessionLocal()
+                            run_id = str(_uuid.uuid4())[:8]
+                            eq_json = [{"date": str(d.date() if hasattr(d, "date") else d), "value": float(v)} for d, v in zip(equity.index, equity.values)]
+                            bench_json = [{"date": str(d.date() if hasattr(d, "date") else d), "value": float(v)} for d, v in zip(bench_equity.index, bench_equity.values)]
+                            trades_json = [{"date": str(t.date), "ticker": t.ticker, "action": t.action, "quantity": t.quantity, "price": t.price, "pnl": t.pnl} for t in portfolio.trades]
+                            record = BacktestHistory(
+                                id=run_id,
+                                strategy=selected_strategy,
+                                strategy_name=config["name"],
+                                years=bt_years,
+                                initial_cash=float(bt_cash),
+                                data_start=str(data.index.min().date()),
+                                data_end=str(data.index.max().date()),
+                                trading_days=len(data),
+                                total_return=metrics.get("total_return"),
+                                cagr=metrics.get("cagr"),
+                                max_drawdown=metrics.get("max_drawdown"),
+                                sharpe_ratio=metrics.get("sharpe_ratio"),
+                                metrics_json=_json.dumps(metrics),
+                                equity_curve_json=_json.dumps(eq_json),
+                                benchmark_curve_json=_json.dumps(bench_json),
+                                trades_json=_json.dumps(trades_json),
+                                created_at=_dt.datetime.utcnow(),
+                            )
+                            db.add(record)
+                            db.commit()
+                            db.close()
+                            st.toast(f"💾 结果已保存到数据库 (ID: {run_id})", icon="✅")
+                        except Exception as db_err:
+                            st.toast(f"⚠️ DB保存失败: {db_err}", icon="⚠️")
 
-                    # ── Metrics Cards ──
-                    m1, m2, m3, m4, m5, m6 = st.columns(6)
-                    m1.metric("总回报", f"{metrics['total_return']*100:.1f}%")
-                    m2.metric("年化收益", f"{metrics['cagr']*100:.1f}%")
-                    m3.metric("最大回撤", f"{metrics['max_drawdown']*100:.1f}%")
-                    m4.metric("夏普比率", f"{metrics['sharpe_ratio']:.2f}")
-                    m5.metric("索提诺比率", f"{metrics['sortino_ratio']:.2f}")
-                    m6.metric("卡尔玛比率", f"{metrics['calmar_ratio']:.2f}")
+                        st.success(f"✅ 回测完成！数据范围: {data.index.min().date()} → {data.index.max().date()} ({len(data)} 交易日)")
 
-                    # ── Benchmark Comparison ──
-                    if "benchmark_cagr" in metrics:
-                        b1, b2, b3, b4 = st.columns(4)
-                        b1.metric(f"基准 ({bench_ticker}) 总回报", f"{metrics.get('benchmark_total_return', 0)*100:.1f}%")
-                        b2.metric(f"基准年化", f"{metrics.get('benchmark_cagr', 0)*100:.1f}%")
-                        b3.metric(f"基准最大回撤", f"{metrics.get('benchmark_max_drawdown', 0)*100:.1f}%")
-                        b4.metric(f"基准夏普", f"{metrics.get('benchmark_sharpe', 0):.2f}")
+                        # ── Metrics Cards ──
+                        m1, m2, m3, m4, m5, m6 = st.columns(6)
+                        m1.metric("总回报", f"{metrics['total_return']*100:.1f}%")
+                        m2.metric("年化收益", f"{metrics['cagr']*100:.1f}%")
+                        m3.metric("最大回撤", f"{metrics['max_drawdown']*100:.1f}%")
+                        m4.metric("夏普比率", f"{metrics['sharpe_ratio']:.2f}")
+                        m5.metric("索提诺比率", f"{metrics['sortino_ratio']:.2f}")
+                        m6.metric("卡尔玛比率", f"{metrics['calmar_ratio']:.2f}")
 
-                    # ── Equity Chart ──
-                    curves = {
-                        config["name"]: equity,
-                        f"Buy & Hold {bench_ticker}": bench_equity,
-                    }
-                    fig = plotly_equity_chart(
-                        curves,
-                        title=f"{config['name']} vs Buy & Hold — {bt_years}Y (${bt_cash:,.0f})",
-                    )
-                    if fig:
-                        st.plotly_chart(fig, use_container_width=True)
+                        # ── Benchmark Comparison ──
+                        if "benchmark_cagr" in metrics:
+                            b1, b2, b3, b4 = st.columns(4)
+                            b1.metric(f"基准 ({bench_ticker}) 总回报", f"{metrics.get('benchmark_total_return', 0)*100:.1f}%")
+                            b2.metric(f"基准年化", f"{metrics.get('benchmark_cagr', 0)*100:.1f}%")
+                            b3.metric(f"基准最大回撤", f"{metrics.get('benchmark_max_drawdown', 0)*100:.1f}%")
+                            b4.metric(f"基准夏普", f"{metrics.get('benchmark_sharpe', 0):.2f}")
 
-                    # ── Trade Stats & Monthly Heatmap ──
-                    col_trades, col_heatmap = st.columns(2)
+                        # ── Equity Chart ──
+                        curves = {
+                            config["name"]: equity,
+                            f"Buy & Hold {bench_ticker}": bench_equity,
+                        }
+                        fig = plotly_equity_chart(
+                            curves,
+                            title=f"{config['name']} vs Buy & Hold — {bt_years}Y (${bt_cash:,.0f})",
+                        )
+                        if fig:
+                            st.plotly_chart(fig, use_container_width=True)
 
-                    with col_trades:
-                        st.markdown("#### 📋 交易记录")
-                        if portfolio.trades:
-                            trade_data = []
-                            for t in portfolio.trades:
-                                trade_data.append({
-                                    "日期": str(t.date),
-                                    "标的": t.ticker,
-                                    "操作": t.action,
-                                    "数量": t.quantity,
-                                    "价格": f"${t.price:.2f}",
-                                    "盈亏": f"${t.pnl:+,.0f}" if t.pnl != 0 else "-",
-                                })
-                            trade_df = pd.DataFrame(trade_data)
-                            st.dataframe(trade_df, height=400, hide_index=True)
-                        else:
-                            st.info("无交易记录")
+                        # ── Trade Stats & Monthly Heatmap ──
+                        col_trades, col_heatmap = st.columns(2)
 
-                    with col_heatmap:
-                        st.markdown("#### 📊 月度收益热力图")
-                        heatmap_fig = plotly_monthly_heatmap(equity, config["name"])
-                        if heatmap_fig:
-                            st.plotly_chart(heatmap_fig, use_container_width=True)
+                        with col_trades:
+                            st.markdown("#### 📋 交易记录")
+                            if portfolio.trades:
+                                trade_data = []
+                                for t in portfolio.trades:
+                                    trade_data.append({
+                                        "日期": str(t.date),
+                                        "标的": t.ticker,
+                                        "操作": t.action,
+                                        "数量": t.quantity,
+                                        "价格": f"${t.price:.2f}",
+                                        "盈亏": f"${t.pnl:+,.0f}" if t.pnl != 0 else "-",
+                                    })
+                                trade_df = pd.DataFrame(trade_data)
+                                st.dataframe(trade_df, height=400, hide_index=True)
+                            else:
+                                st.info("无交易记录")
 
-                    # ── Win Rate / Profit Factor (if trades exist) ──
-                    if "win_rate" in metrics:
-                        st.divider()
-                        t1, t2, t3 = st.columns(3)
-                        t1.metric("胜率", f"{metrics['win_rate']*100:.1f}%")
-                        t2.metric("盈亏比", f"{metrics.get('profit_factor', 0):.2f}")
-                        t3.metric("总交易数", f"{metrics.get('total_trades', 0)}")
+                        with col_heatmap:
+                            st.markdown("#### 📊 月度收益热力图")
+                            heatmap_fig = plotly_monthly_heatmap(equity, config["name"])
+                            if heatmap_fig:
+                                st.plotly_chart(heatmap_fig, use_container_width=True)
 
-                except Exception as e:
-                    st.error(f"❌ 回测失败: {e}")
-                    import traceback
-                    st.code(traceback.format_exc())
+                        # ── Win Rate / Profit Factor (if trades exist) ──
+                        if "win_rate" in metrics:
+                            st.divider()
+                            t1, t2, t3 = st.columns(3)
+                            t1.metric("胜率", f"{metrics['win_rate']*100:.1f}%")
+                            t2.metric("盈亏比", f"{metrics.get('profit_factor', 0):.2f}")
+                            t3.metric("总交易数", f"{metrics.get('total_trades', 0)}")
+
+                    except Exception as e:
+                        st.error(f"❌ 回测失败: {e}")
+                        import traceback
+                        st.code(traceback.format_exc())
+
+        # ================================================================
+        # SUB-TAB 2: History
+        # ================================================================
+        with bt_sub_history:
+            st.markdown("##### 📋 回测历史记录")
+            st.caption("所有通过本面板运行的回测自动存入SQLite数据库")
+
+            try:
+                import json as _json
+                from backtesting.db import init_db, SessionLocal, BacktestHistory
+                init_db()
+                db = SessionLocal()
+                records = db.query(BacktestHistory).order_by(BacktestHistory.created_at.desc()).limit(50).all()
+                db.close()
+
+                if not records:
+                    st.info("📭 暂无历史记录，点击「运行回测」标签页开始你的第一次回测吧！")
+                else:
+                    # Summary table
+                    history_data = []
+                    for r in records:
+                        history_data.append({
+                            "ID": r.id,
+                            "执行时间": r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "-",
+                            "策略": r.strategy_name,
+                            "年数": r.years,
+                            "初始资金": f"${r.initial_cash:,.0f}",
+                            "总回报": f"{r.total_return*100:.1f}%" if r.total_return else "-",
+                            "年化": f"{r.cagr*100:.1f}%" if r.cagr else "-",
+                            "最大回撤": f"{r.max_drawdown*100:.1f}%" if r.max_drawdown else "-",
+                            "夏普": f"{r.sharpe_ratio:.2f}" if r.sharpe_ratio else "-",
+                            "数据范围": f"{r.data_start} → {r.data_end}",
+                        })
+
+                    history_df = pd.DataFrame(history_data)
+
+                    # Color the total return column
+                    def _color_return(val):
+                        if val == "-":
+                            return ""
+                        try:
+                            num = float(val.replace("%", ""))
+                            return "color: #16a34a; font-weight: 600" if num >= 0 else "color: #dc2626; font-weight: 600"
+                        except:
+                            return ""
+
+                    styled = history_df.style.map(_color_return, subset=["总回报"])
+                    st.dataframe(styled, hide_index=True, use_container_width=True)
+
+                    # ── Load a specific run ──
+                    st.divider()
+                    st.markdown("##### 🔍 查看详细结果")
+                    run_ids = [r.id for r in records]
+                    run_labels = [f"{r.id} — {r.strategy_name} ({r.data_start} → {r.data_end})" for r in records]
+                    selected_run_idx = st.selectbox("选择历史记录", range(len(run_ids)), format_func=lambda i: run_labels[i], key="bt_history_select")
+
+                    if st.button("📂 加载详情", key="bt_load_history", use_container_width=True):
+                        selected_run_id = run_ids[selected_run_idx]
+                        db2 = SessionLocal()
+                        rec = db2.query(BacktestHistory).filter(BacktestHistory.id == selected_run_id).first()
+                        db2.close()
+
+                        if rec:
+                            loaded_metrics = _json.loads(rec.metrics_json)
+                            loaded_equity = _json.loads(rec.equity_curve_json)
+                            loaded_bench = _json.loads(rec.benchmark_curve_json)
+                            loaded_trades = _json.loads(rec.trades_json)
+
+                            st.success(f"✅ 已加载: {rec.strategy_name} | {rec.data_start} → {rec.data_end} | {rec.trading_days} 交易日")
+
+                            # Metrics cards
+                            m1, m2, m3, m4, m5, m6 = st.columns(6)
+                            m1.metric("总回报", f"{loaded_metrics.get('total_return', 0)*100:.1f}%")
+                            m2.metric("年化收益", f"{loaded_metrics.get('cagr', 0)*100:.1f}%")
+                            m3.metric("最大回撤", f"{loaded_metrics.get('max_drawdown', 0)*100:.1f}%")
+                            m4.metric("夏普比率", f"{loaded_metrics.get('sharpe_ratio', 0):.2f}")
+                            m5.metric("索提诺比率", f"{loaded_metrics.get('sortino_ratio', 0):.2f}")
+                            m6.metric("卡尔玛比率", f"{loaded_metrics.get('calmar_ratio', 0):.2f}")
+
+                            # Benchmark comparison
+                            if loaded_metrics.get("benchmark_cagr"):
+                                b1, b2, b3, b4 = st.columns(4)
+                                b1.metric("基准总回报", f"{loaded_metrics.get('benchmark_total_return', 0)*100:.1f}%")
+                                b2.metric("基准年化", f"{loaded_metrics.get('benchmark_cagr', 0)*100:.1f}%")
+                                b3.metric("基准最大回撤", f"{loaded_metrics.get('benchmark_max_drawdown', 0)*100:.1f}%")
+                                b4.metric("基准夏普", f"{loaded_metrics.get('benchmark_sharpe', 0):.2f}")
+
+                            # Equity curve from JSON
+                            if loaded_equity:
+                                from backtesting.visualizer import plotly_equity_chart
+                                eq_series = pd.Series(
+                                    [p["value"] for p in loaded_equity],
+                                    index=pd.to_datetime([p["date"] for p in loaded_equity]),
+                                )
+                                bench_series = pd.Series(
+                                    [p["value"] for p in loaded_bench],
+                                    index=pd.to_datetime([p["date"] for p in loaded_bench]),
+                                ) if loaded_bench else None
+
+                                curves = {rec.strategy_name: eq_series}
+                                if bench_series is not None:
+                                    curves["Buy & Hold"] = bench_series
+                                fig = plotly_equity_chart(curves, title=f"{rec.strategy_name} (历史回放)")
+                                if fig:
+                                    st.plotly_chart(fig, use_container_width=True)
+
+                            # Trades table
+                            if loaded_trades:
+                                st.markdown("#### 📋 交易记录")
+                                trade_df = pd.DataFrame(loaded_trades)
+                                trade_df.columns = [c.replace("date", "日期").replace("ticker", "标的").replace("action", "操作").replace("quantity", "数量").replace("price", "价格").replace("pnl", "盈亏") for c in trade_df.columns]
+                                st.dataframe(trade_df, height=400, hide_index=True)
+
+                            # Win rate
+                            if loaded_metrics.get("win_rate"):
+                                st.divider()
+                                t1, t2, t3 = st.columns(3)
+                                t1.metric("胜率", f"{loaded_metrics['win_rate']*100:.1f}%")
+                                t2.metric("盈亏比", f"{loaded_metrics.get('profit_factor', 0):.2f}")
+                                t3.metric("总交易数", f"{loaded_metrics.get('total_trades', 0)}")
+
+            except Exception as e:
+                st.error(f"❌ 加载历史记录失败: {e}")
+                import traceback
+                st.code(traceback.format_exc())
 
 
 if __name__ == "__main__":
